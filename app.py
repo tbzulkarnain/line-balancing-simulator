@@ -68,29 +68,23 @@ if not edited_df.empty and takt_time_sec > 0:
     if st.button("▶️ Jalankan Animasi Aliran Produksi"):
         anim_placeholder = st.empty()
         
-        # Penyiapan koordinat untuk visualisasi Plotly
-        # X: Raw material ada di 0, stasiun ada di x = 1, 2, 3...
         stations = list(df["Nama Proses"])
         n_stations = len(stations)
         
-        # Poin posisi X
         x_raw = 0
         x_stations = list(range(1, n_stations + 1))
-        
-        # Animasi bergerak dalam hitungan detik simulasi
         total_steps = 50
         
         for step in range(total_steps):
             fig = go.Figure()
 
-            # 1. Gambar Raw Material (Tumpukan Hijau di Kiri)
+            # 1. Gambar Raw Material (Tumpukan di Kiri)
             fig.add_trace(go.Scatter(
                 x=[x_raw], y=[0],
                 mode="text+markers",
-                marker=dict(symbol="square", size=30, color="#10B981"),
+                marker=dict(symbol="square", size=28, color="#10B981"),
                 text=["🧱 Raw Material"],
                 textposition="bottom center",
-                name="Raw Material",
                 showlegend=False
             ))
 
@@ -99,13 +93,13 @@ if not edited_df.empty and takt_time_sec > 0:
                 ct_val = df.iloc[i]["Effective CT (s)"]
                 is_bn = (i == bottleneck_idx)
                 
-                box_color = "#EF4444" if is_bn else "#3B82F6" # Merah jika bottleneck
+                box_color = "#EF4444" if is_bn else "#3B82F6"
                 
-                # Marker Stasiun (Bentuk Meja/Operator)
+                # Menggunakan symbol 'square' yang aman didukung Plotly
                 fig.add_trace(go.Scatter(
                     x=[x_stations[i]], y=[0],
                     mode="markers+text",
-                    marker=dict(symbol="rectangle", size=45, color=box_color, line=dict(width=2, color="black")),
+                    marker=dict(symbol="square", size=35, color=box_color, line=dict(width=2, color="black")),
                     text=[f"⏱️ <b>{ct_val:.1f}s</b><br><br><br><b>{st_name}</b><br>(MP: {df.iloc[i]['Actual MP']})"],
                     textposition="top center",
                     showlegend=False
@@ -124,8 +118,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     arrowcolor="#9CA3AF"
                 )
 
-            # 3. Posisi Item/Barang (📦) Bergerak Berdasarkan Timernya
-            # Simulasi pergerakan barang di sepanjang jalur
+            # 3. Posisi Item/Barang (📦) Bergerak
             current_pos = (step % (n_stations + 1))
             
             if current_pos > 0:
@@ -133,13 +126,13 @@ if not edited_df.empty and takt_time_sec > 0:
                 fig.add_trace(go.Scatter(
                     x=[item_x], y=[0.15],
                     mode="markers+text",
-                    marker=dict(symbol="box", size=22, color="#F59E0B"),
+                    marker=dict(symbol="square", size=20, color="#F59E0B"),
                     text=["📦 Unit WIP"],
                     textposition="top center",
                     showlegend=False
                 ))
 
-            # Styling Tampilan Plotly Agar Mirip Diagram Alir
+            # Styling Tampilan Plotly
             fig.update_layout(
                 xaxis=dict(range=[-0.5, n_stations + 1.5], showgrid=False, zeroline=False, showticklabels=False),
                 yaxis=dict(range=[-0.5, 0.8], showgrid=False, zeroline=False, showticklabels=False),
@@ -150,7 +143,7 @@ if not edited_df.empty and takt_time_sec > 0:
             )
 
             anim_placeholder.plotly_chart(fig, use_container_width=True)
-            time.sleep(0.15) # Kecepatan frame animasi
+            time.sleep(0.15)
 
     # --- STEP 3: GRAFIK YAMAZUMI ---
     st.markdown("---")
