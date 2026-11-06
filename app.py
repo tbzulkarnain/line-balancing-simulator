@@ -5,13 +5,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 import time
 
-st.set_page_config(page_title="Line Balancing & Bottleneck Visualizer", layout="wide")
+st.set_page_config(page_title="Production Line Flow & Balancing Simulator", layout="wide")
 
-st.title("🏭 Line Balancing & Bottleneck Visualizer")
-st.caption("Aplikasi simulasi alur produksi dan analisis bottleneck interaktif")
+st.title("🏭 Production Line Balancing & Real-Time Flow Simulator")
+st.caption("Simulasi alur produksi nyata, kalkulasi MP otomatis, dan analisis bottleneck presisi")
 
-# --- SIDEBAR: OPERATIONAL PARAMETERS ---
-st.sidebar.header("⚙️ Parameter Operasional")
+# --- SIDEBAR: PARAMETER OPERASIONAL ---
+st.sidebar.header("⚙️ Parameter Target & Waktu")
 available_time_min = st.sidebar.number_input("Waktu Kerja Efektif (Menit/Shift)", value=480, step=10)
 target_demand = st.sidebar.number_input("Target Production (Pcs/Shift)", value=400, step=10)
 
@@ -21,144 +21,177 @@ st.sidebar.metric(label="⏱️ Takt Time Target", value=f"{takt_time_sec:.2f} d
 
 st.markdown("---")
 
-# --- STEP 1: INPUT DATA TABEL PROSES ---
-st.subheader("1. Input Data Aliran Proses")
-st.write("Silakan isi data proses, cycle time dasar, allowance, dan jumlah operator (MP).")
+# --- STEP 1: INPUT DATA ---
+st.subheader("1. Data Input Proses Produksi")
+st.write("Isi nama proses, cycle time dasar, dan allowance. **Required MP** dihitung otomatis oleh sistem, lalu user mengisi **Actual MP** di kolom sebelah.")
 
-# Default template data
+# Default data awal
 default_data = pd.DataFrame({
-    "Nama Proses": ["Proses A", "Proses B", "Proses C", "Proses D", "Proses E"],
-    "Cycle Time Base (detik)": [45.0, 65.0, 30.0, 80.0, 40.0],
-    "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0],
-    "Jumlah MP": [1, 1, 1, 1, 1]
+    "Nama Proses": ["Cutting Prep", "Stitching A", "Stitching B", "Assembly", "Quality Control", "Packing"],
+    "Cycle Time Base (s)": [30.0, 55.0, 70.0, 40.0, 25.0, 20.0],
+    "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+    "Actual MP": [1, 1, 2, 1, 1, 1] # Kolom yang diisi user
 })
 
-# Data Editor (Tabel Interaktif Kosong / Customizable)
+# Tabel Interaktif
 edited_df = st.data_editor(
     default_data,
     num_rows="dynamic",
     use_container_width=True,
     column_config={
         "Nama Proses": st.column_config.TextColumn("Nama Proses", required=True),
-        "Cycle Time Base (detik)": st.column_config.NumberColumn("CT Base (s)", min_value=0.1, format="%.2f"),
+        "Cycle Time Base (s)": st.column_config.NumberColumn("CT Base (s)", min_value=0.1, format="%.2f"),
         "Allowance (%)": st.column_config.NumberColumn("Allowance (%)", min_value=0.0, max_value=100.0, format="%.1f"),
-        "Jumlah MP": st.column_config.NumberColumn("Manpower (MP)", min_value=1, step=1)
+        "Actual MP": st.column_config.NumberColumn("Actual MP (Isi User)", min_value=1, step=1, required=True)
     }
 )
 
 if not edited_df.empty and takt_time_sec > 0:
-    # --- STEP 2: PERHITUNGAN LINE BALANCING ---
     df = edited_df.copy()
     
-    # Standard Time per unit = Base CT * (1 + Allowance/100)
-    df["Standard Time (s)"] = df["Cycle Time Base (detik)"] * (1 + df["Allowance (%)"] / 100)
+    # 1. Standard Time = Base CT * (1 + Allowance/100)
+    df["Standard Time (s)"] = df["Cycle Time Base (s)"] * (1 + df["Allowance (%)"] / 100)
     
-    # Effective Cycle Time per MP = Standard Time / Jumlah MP
-    df["Effective CT (s)"] = df["Standard Time (s)"] / df["Jumlah MP"]
+    # 2. Required MP (Kalkulasi Otomatis Sistem) = Standard Time / Takt Time
+    df["Required MP (Calc)"] = df["Standard Time (s)"] / takt_time_sec
     
-    # Identification
+    # 3. Effective CT per Station = Standard Time / Actual MP
+    df["Effective CT (s)"] = df["Standard Time (s)"] / df["Actual MP"]
+    
+    # Identifikasi Bottleneck
     max_ct = df["Effective CT (s)"].max()
-    bottleneck_process = df.loc[df["Effective CT (s)"] == max_ct, "Nama Proses"].values[0]
+    bottleneck_idx = df["Effective CT (s)"].idxmax()
+    bottleneck_process = df.loc[bottleneck_idx, "Nama Proses"]
     
     total_std_time = df["Standard Time (s)"].sum()
     total_effective_ct = df["Effective CT (s)"].sum()
-    total_mp = df["Jumlah MP"].sum()
+    total_actual_mp = df["Actual MP"].sum()
     num_stations = len(df)
     
-    # Line Balancing Metrics
-    # Balancing Rate (%) = Total Std Time / (Bottleneck CT * Total Stations/MP) * 100
+    # Metrics
     balancing_rate = (total_effective_ct / (max_ct * num_stations)) * 100
     balance_delay = 100 - balancing_rate
-    output_per_hour = 3600 / max_ct if max_ct > 0 else 0
-
+    
+    # --- STEP 2: SUMMARY METRICS & OUTPUT SIMULATOR (WAKTU TERTENTU) ---
     st.markdown("---")
-    st.subheader("2. Summary Performance & Line Balancing Rate")
+    st.subheader("2. Ringkasan Kinerja & Estimasi Output Waktu")
     
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("🎯 Balancing Rate", f"{balancing_rate:.2f}%", delta=f"{balancing_rate - 85:.1f}% vs Target 85%")
-    col2.metric("⏳ Balance Delay", f"{balance_delay:.2f}%")
-    col3.metric("🚨 Bottleneck Station", f"{bottleneck_process}", delta=f"{max_ct:.1f} s", delta_color="inverse")
-    col4.metric("📦 Est. Output / Jam", f"{int(output_per_hour)} pcs")
+    col1.metric("🎯 Balancing Rate", f"{balancing_rate:.2f}%")
+    col2.metric("🚨 Bottleneck Station", f"{bottleneck_process}", delta=f"{max_ct:.1f} s/pcs", delta_color="inverse")
+    col3.metric("👥 Total Actual MP", f"{total_actual_mp} Orang")
+    col4.metric("📦 Max Output / Jam", f"{int(3600 / max_ct)} pcs")
 
-    # --- STEP 3: VISUALISASI YAMAZUMI / LINE BALANCING CHART ---
+    # Simulasi Output Berdasarkan Menit Setup (Misal 10 Menit, 30 Menit, atau 1 Shift)
+    st.info("💡 **Kalkulator Kapasitas Output Berdasarkan Waktu Nyata (Bottleneck-Controlled):**")
+    sim_time_minutes = st.slider("Pilih Durasi Waktu Simulasi (Menit):", min_value=1, max_value=480, value=10, step=5)
+    
+    # Output dibatasi oleh stasiun paling lambat (Bottleneck)
+    seconds_available = sim_time_minutes * 60
+    est_output_units = int(seconds_available / max_ct) if max_ct > 0 else 0
+    
+    col_a, col_b = st.columns(2)
+    col_a.metric(f"⏱️ Waktu Berjalan ({sim_time_minutes} Menit)", f"{seconds_available:,} Detik")
+    col_b.metric(f"🚀 Estimasi Total Output Tercapai", f"{est_output_units} Pcs", delta=f"Rata-rata {est_output_units/sim_time_minutes:.2f} pcs/menit")
+
+    # --- STEP 3: GRAFIK YAMAZUMI ---
     st.markdown("---")
-    st.subheader("3. Grafik Balancing & Identifikasi Bottleneck")
-
-    colors = ['#FF4B4B' if ct == max_ct else '#00C0F2' if ct > takt_time_sec else '#29B6F6' for ct in df["Effective CT (s)"]]
+    st.subheader("3. Grafik Analisis Beban Kerja vs Takt Time")
 
     fig = go.Figure()
-    
+    colors = ['#FF4B4B' if i == bottleneck_idx else '#00C0F2' for i in range(len(df))]
+
     fig.add_trace(go.Bar(
         x=df["Nama Proses"],
         y=df["Effective CT (s)"],
-        text=[f"{val:.1f}s (MP:{mp})" for val, mp in zip(df["Effective CT (s)"], df["Jumlah MP"])],
+        text=[f"Req: {req_mp:.1f}<br>Act: {act_mp} MP<br>({ct:.1f}s)" for req_mp, act_mp, ct in zip(df["Required MP (Calc)"], df["Actual MP"], df["Effective CT (s)"])],
         textposition='auto',
         marker_color=colors,
         name="Effective CT"
     ))
 
-    # Takt Time Line
     fig.add_hline(
         y=takt_time_sec, 
         line_dash="dash", 
         line_color="red", 
-        annotation_text=f"Takt Time ({takt_time_sec:.1f}s)", 
+        annotation_text=f"Takt Time Target ({takt_time_sec:.1f}s)", 
         annotation_position="top right"
     )
 
     fig.update_layout(
-        title="Cycle Time per Station vs Takt Time Target",
-        xaxis_title="Proses / Stasiun",
-        yaxis_title="Effective Cycle Time (Detik)",
+        title="Effective Cycle Time per Station (Dibandingkan Takt Time)",
+        xaxis_title="Alur Proses Produksi",
+        yaxis_title="Waktu Siklus Efektif (Detik)",
         template="plotly_white",
-        height=400
+        height=420
     )
-
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- STEP 4: ANIMASI STREAM SIMULASI FLOW PRODUKSI ---
+    # --- STEP 4: ANIMASI KONVEYOR / MEJA ALIRAN PRODUKSI NYATA ---
     st.markdown("---")
-    st.subheader("4. 🎬 Animasi Live Aliran Produksi & Penumpukan WIP")
-    st.write("Tekan tombol di bawah untuk melihat simulasi pergerakan unit dan titik penumpukan barang (bottleneck).")
+    st.subheader("4. 🎬 Animasi Meja Aliran Produksi (Conveyor Flow Simulation)")
+    st.write("Simulasi ini memperlihatkan pergerakan barang secara visual dari stasiun ke stasiun berdasarkan Cycle Time aktual. Anda bisa melihat di mana barang menumpuk (*Bottleneck*).")
 
-    if st.button("▶️ Jalankan Animasi Simulation Flow"):
-        progress_placeholders = {row["Nama Proses"]: st.empty() for _, row in df.iterrows()}
-        status_placeholders = {row["Nama Proses"]: st.empty() for _, row in df.iterrows()}
+    if st.button("▶️ Mulai Simulasi Meja Konveyor"):
+        sim_container = st.container()
         
-        # Simulation Loop (10 Cycles)
-        for cycle in range(1, 11):
-            st.caption(f"Loop Simulasi Run ke-{cycle}/10")
-            for idx, row in df.iterrows():
-                p_name = row["Nama Proses"]
-                ct_eff = row["Effective CT (s)"]
-                
-                # Visual indikator load
-                load_ratio = ct_eff / takt_time_sec
-                
-                if load_ratio > 1.0:
-                    status_text = f"🚨 **{p_name}** [BOTTLENECK] - Penumpukan WIP terjadi!"
-                else:
-                    status_text = f"✅ **{p_name}** - Flow Lancar"
-                
-                status_placeholders[p_name].markdown(status_text)
-                
-                # Animasi progress bar disesuaikan dengan durasi relatif CT
-                sim_speed = ct_eff / max_ct # Normalisasi waktu simulasi
-                for p in range(0, 101, 20):
-                    progress_placeholders[p_name].progress(p, text=f"{p_name} ({ct_eff:.1f}s)")
-                    time.sleep(sim_speed * 0.05)
-            time.sleep(0.2)
-        st.success("Simulasi Selesai!")
+        with sim_container:
+            st.write("🔄 **Status Aliran Barang di Jalur Produksi (Real-Time Simulation Steps):**")
+            
+            # Buat placeholder visual untuk tiap proses (seperti kotak stasiun kerja di pabrik)
+            station_cols = st.columns(len(df))
+            station_boxes = []
+            
+            for idx, col in enumerate(station_cols):
+                p_name = df.iloc[idx]["Nama Proses"]
+                with col:
+                    st.markdown(f"**Stasiun {idx+1}**")
+                    box = st.empty()
+                    station_boxes.append(box)
 
-    # --- STEP 5: RECOMMENDATION / IMPROVEMENT SUGGESTION ---
+            log_box = st.empty()
+            
+            # Jalankan simulasi pergerakan barang selama beberapa siklus simulasi
+            num_cycles_sim = 5
+            for cycle in range(1, num_cycles_sim + 1):
+                log_box.markdown(f"🔹 **Siklus Produksi ke-{cycle} Berjalan...**")
+                
+                # Simulasi bertahap dari proses pertama ke terakhir
+                for step in range(len(df)):
+                    p_name = df.iloc[step]["Nama Proses"]
+                    ct_eff = df.iloc[step]["Effective CT (s)"]
+                    
+                    # Update status visual stasiun
+                    for i, box in enumerate(station_boxes):
+                        station_name = df.iloc[i]["Nama Proses"]
+                        station_ct = df.iloc[i]["Effective CT (s)"]
+                        
+                        if i == step:
+                            if station_ct == max_ct:
+                                box.error(f"🚨 **{station_name}**\n\n[PROSES BERJALAN]\n⚠️ *BOTTLENECK!* (WIP Menumpuk: {station_ct:.1f}s)")
+                            else:
+                                box.info(f"⚙️ **{station_name}**\n\n[PROSES BERJALAN]\n⏳ {station_ct:.1f}s")
+                        elif i < step:
+                            box.success(f"✅ **{station_name}**\n\n[SELESAI]\n📦 Barang Terkirim")
+                        else:
+                            box.warning(f"⏳ **{station_name}**\n\n[MENUNGGU]\n📦 Standby WIP")
+                    
+                    # Kecepatan animasi disesuaikan dengan proporsi CT proses tersebut
+                    time.sleep(min(max(ct_eff / 20.0, 0.1), 0.8))
+                
+                time.sleep(0.3)
+            
+            log_box.success("🎉 Simulasi Aliran Konveyor Selesai! Terlihat jelas stasiun mana yang memperlambat laju produksi.")
+
+    # --- STEP 5: SARAN PERBAIKAN (IMPROVEMENT) ---
     st.markdown("---")
-    st.subheader("5. 💡 Rekomendasi Improvement")
+    st.subheader("5. 💡 Analisis & Rekomendasi Perbaikan")
+    
+    req_mp_bottleneck = df.loc[bottleneck_idx, "Required MP (Calc)"]
+    act_mp_bottleneck = df.loc[bottleneck_idx, "Actual MP"]
     
     st.warning(f"""
-    **Area Bottleneck:** Process **{bottleneck_process}** memiliki Effective Cycle Time tertinggi yaitu **{max_ct:.2f} detik**.
-    
-    **Saran Tindakan di Lapangan:**
-    1. **Penambahan Manpower (MP)**: Coba tambahkan 1 MP pada *{bottleneck_process}* di tabel input atas untuk membagi beban kerja.
-    2. **Line Balancing / Element Combining**: Transfer sebagian elemen kerja dari *{bottleneck_process}* ke stasiun dengan CT terendah.
-    3. **KAIZEN / ECRS**: Lakukan analisis gerakan (*Motion Study*) pada *{bottleneck_process}* untuk menekan *Allowance* atau hilangkan *Waste*.
+    * **Analisis Bottleneck Utama:** Proses **{bottleneck_process}** memiliki beban tertinggi dengan CT efektif **{max_ct:.2f} detik**.
+    * **Rekomendasi Manpower:** Sistem menghitung kebutuhan (*Required MP*) di stasiun ini adalah **{req_mp_bottleneck:.2f} orang**. Saat ini *Actual MP* yang dipasang adalah **{act_mp_bottleneck} orang**. 
+      * *Saran:* Jika Anda menambah **Actual MP** pada proses *{bottleneck_process}* atau membagi elemen kerjanya (Line Balancing), maka *Balancing Rate* akan naik secara signifikan dan kapasitas output per waktu tertentu akan meningkat!
     """)
