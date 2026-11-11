@@ -5,7 +5,7 @@ import json
 st.set_page_config(page_title="Line Balancing Conveyor Simulator", layout="wide")
 
 st.title("🏭 Production Line Video Simulator & Line Balancing")
-st.caption("Simulasi konveyor: Sepatu maju per langkah takt time, diambil operator ke meja kerja, lalu dilanjutkan ke stasiun berikutnya.")
+st.caption("Simulasi konveyor: Sepatu berjalan di tengah, ditarik operator ke meja kerja sesuai Cycle Time, lalu dilanjutkan.")
 
 # --- SIDEBAR: PARAMETER OPERASIONAL ---
 st.sidebar.header("⚙️ Parameter Operasional")
@@ -17,7 +17,7 @@ st.sidebar.metric(label="⏱️ Takt Time Target", value=f"{takt_time_sec:.2f} d
 
 # --- STEP 1: INPUT DATA TABEL PROSES ---
 st.subheader("1. Data Input Proses & Cycle Time")
-st.write("Isi proses produksi. Sepatu di konveyor akan ditarik oleh operator sampingnya sesuai ketukan langkah takt time.")
+st.write("Isi proses produksi. Operator akan mengambil sepatu dari konveyor, memprosesnya sesuai Cycle Time, lalu melanjutkannya.")
 
 default_data = pd.DataFrame({
     "Nama Proses": ["Cutting", "Stitching 1", "Stitching 2", "Assembly 1", "Assembly 2", "Outsole", "QC", "Packing"],
@@ -59,9 +59,9 @@ if not edited_df.empty and takt_time_sec > 0:
     col3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI STEP-BY-STEP TAKT TIME & PENGAMBILAN SEPATU ---
+    # --- STEP 2: ANIMASI KANVAS JAVASCRIPT ---
     st.markdown("---")
-    st.subheader("2. 🎬 Simulasi Konveyor Langkah Takt Time & Operator")
+    st.subheader("2. 🎬 Simulasi Konveyor & Operator")
     st.caption("Sepatu berjalan di konveyor tengah, ditarik ke meja operator di sampingnya untuk diproses, lalu dilanjutkan.")
 
     stations_data = []
@@ -74,6 +74,7 @@ if not edited_df.empty and takt_time_sec > 0:
 
     stations_json = json.dumps(stations_data)
 
+    # Menggunakan raw string f-string dengan escape kurung kurawal ganda {{ }} untuk CSS/JS agar aman dari Python syntax error
     html_code = f"""
     <!DOCTYPE html>
     <html>
@@ -151,7 +152,6 @@ if not edited_df.empty and takt_time_sec > 0:
             let animationId = null;
             let timeElapsed = 0;
             let isRunning = false;
-            let stepCounter = 0;
 
             const mid = Math.ceil(stations.length / 2);
             const topStations = stations.slice(0, mid);
@@ -159,10 +159,9 @@ if not edited_df.empty and takt_time_sec > 0:
             const maxCols = Math.max(topStations.length, bottomStations.length);
             const colWidth = canvas.width / (maxCols + 0.5);
 
-            // Menyimpan status tiap stasiun: apakah sedang memegang sepatu ('has_shoe') atau kosong ('empty')
-            let stationWorkState = stations.map(() => ({ progress: 0, hasShoe: false }));
-            // Posisi sepatu di jalur konveyor tengah
-            let conveyorShoes = [0, 2, 4]; // Indeks posisi stasiun di konveyor
+            let stationWorkState = stations.map(function() {{
+                return {{ progress: 0, hasShoe: true }};
+            }});
 
             function drawScene() {{
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -185,7 +184,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 let globalIndex = 0;
 
                 // 2. Stasiun Sisi ATAS
-                topStations.forEach((stn, i) => {{
+                topStations.forEach(function(stn, i) {{
                     let x = 90 + i * colWidth;
                     let y = 75;
                     let state = stationWorkState[globalIndex];
@@ -213,7 +212,6 @@ if not edited_df.empty and takt_time_sec > 0:
                     ctx.font = "16px Arial";
                     ctx.fillText("👤", x, y - 45);
 
-                    // Jika operator mengambil sepatu dari konveyor ke meja
                     if (state.hasShoe) {{
                         ctx.fillStyle = "#10b981";
                         ctx.beginPath();
@@ -228,7 +226,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 }});
 
                 // 3. Stasiun Sisi BAWAH
-                bottomStations.forEach((stn, i) => {{
+                bottomStations.forEach(function(stn, i) {{
                     let x = 90 + i * colWidth;
                     let y = 375;
                     let state = stationWorkState[globalIndex];
@@ -269,14 +267,13 @@ if not edited_df.empty and takt_time_sec > 0:
                     globalIndex++;
                 }});
 
-                // 4. Sepatu-sepatu yang berjalan di Konveyor Tengah
+                // 4. Sepatu di Konveyor Tengah
                 for(let cIdx = 0; cIdx < maxCols; cIdx++) {{
                     let cX = 90 + cIdx * colWidth;
-                    // Jika stasiun tidak sedang mengambil sepatu, tampilkan sepatu di konveyor tengah
-                    let hasOperatorTaking = stationWorkState[cIdx] && stationWorkState[cIdx].hasShoe;
-                    let hasOperatorTakingBottom = stationWorkState[cIdx + topStations.length] && stationWorkState[cIdx + topStations.length].hasShoe;
+                    let topTaken = stationWorkState[cIdx] && stationWorkState[cIdx].hasShoe;
+                    let botTaken = stationWorkState[cIdx + topStations.length] && stationWorkState[cIdx + topStations.length].hasShoe;
 
-                    if (!hasOperatorTaking && !hasOperatorTakingBottom) {{
+                    if (!topTaken && !botTaken) {{
                         ctx.fillStyle = "#10b981";
                         ctx.beginPath();
                         ctx.arc(cX, 230, 16, 0, Math.PI * 2);
@@ -298,25 +295,21 @@ if not edited_df.empty and takt_time_sec > 0:
                 
                 timeElapsed += 0.2;
 
-                stations.forEach((stn, idx) => {{
+                stations.forEach(function(stn, idx) {{
                     let state = stationWorkState[idx];
                     
-                    // Operator mengambil sepatu jika belum ada
-                    if (!state.hasShoe && state.progress === 0) {{
-                        state.hasShoe = true;
-                    }}
-
-                    // Jika sedang memegang sepatu, kerjakan sesuai cycle time
                     if (state.hasShoe) {{
                         let speedIncrement = (0.2 / stn.ct) * 100;
                         state.progress += speedIncrement;
 
                         if (state.progress >= 100) {{
                             state.progress = 100;
-                            // Selesai dikerjakan, kembalikan ke konveyor setelah jeda singkat
-                            setTimeout(() => {{
+                            setTimeout(function() {{
                                 state.hasShoe = false;
                                 state.progress = 0;
+                                setTimeout(function() {{
+                                    state.hasShoe = true;
+                                }}, 300);
                             }}, 300);
                         }}
                     }}
@@ -343,7 +336,9 @@ if not edited_df.empty and takt_time_sec > 0:
             function resetSimulation() {{
                 pauseSimulation();
                 timeElapsed = 0;
-                stationWorkState = stations.map(() => ({ progress: 0, hasShoe: false }));
+                stationWorkState = stations.map(function() {{
+                    return {{ progress: 0, hasShoe: true }};
+                }});
                 timerDisplay.innerText = "⏱️ Timer: 0.0 Detik";
                 drawScene();
             }}
@@ -380,4 +375,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_video_pull_step")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_video_pull_fixed")
