@@ -5,7 +5,7 @@ import json
 st.set_page_config(page_title="Line Balancing Video Simulator", layout="wide")
 
 st.title("🏭 Production Line Video Simulator & Line Balancing")
-st.caption("Simulasi konveyor interaktif dengan animasi halus seperti video, timer detik, dan kecepatan kerja per stasiun.")
+st.caption("Simulasi konveyor interaktif dengan animasi halus, timer detik, dan progres kerja independen per stasiun berdasarkan Cycle Time.")
 
 # --- SIDEBAR: PARAMETER OPERASIONAL ---
 st.sidebar.header("⚙️ Parameter Operasional")
@@ -17,11 +17,11 @@ st.sidebar.metric(label="⏱️ Takt Time Target", value=f"{takt_time_sec:.2f} d
 
 # --- STEP 1: INPUT DATA TABEL PROSES ---
 st.subheader("1. Data Input Proses & Cycle Time")
-st.write("Isi proses produksi. Data ini akan langsung menggerakkan animasi video konveyor di bawah.")
+st.write("Isi proses produksi. Setiap operator akan bekerja dengan durasi sesuai Cycle Time masing-masing.")
 
 default_data = pd.DataFrame({
     "Nama Proses": ["Cutting", "Stitching 1", "Stitching 2", "Assembly 1", "Assembly 2", "Outsole", "QC", "Packing"],
-    "Cycle Time Base (s)": [12.0, 20.0, 18.0, 25.0, 15.0, 19.0, 14.0, 10.0],
+    "Cycle Time Base (s)": [12.0, 22.0, 18.0, 28.0, 15.0, 20.0, 14.0, 10.0],
     "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
     "Actual MP": [1, 1, 1, 1, 1, 1, 1, 1]
 })
@@ -59,12 +59,11 @@ if not edited_df.empty and takt_time_sec > 0:
     col3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI VIDEO HTML5 CANVAS (MULUS TANPA LAG) ---
+    # --- STEP 2: ANIMASI HTML5 CANVAS DENGAN PROGRES INDEPENDEN PER STASIUN ---
     st.markdown("---")
-    st.subheader("2. 🎬 Simulasi Video Aliran Konveyor Berjalan")
-    st.caption("Tekan tombol Play di bawah untuk melihat animasi pergerakan sepatu dan timer detik berjalan mulus layaknya video.")
+    st.subheader("2. 🎬 Simulasi Video Aliran Konveyor & Progres Kerja Stasiun")
+    st.caption("Perhatikan bar progress di setiap meja operator: operator akan merampungkan pekerjaannya sesuai dengan besar Cycle Time masing-masing.")
 
-    # Siapkan data stasiun dalam format JSON untuk dikirim ke JavaScript
     stations_data = []
     for idx, row in df.iterrows():
         stations_data.append({
@@ -75,7 +74,6 @@ if not edited_df.empty and takt_time_sec > 0:
 
     stations_json = json.dumps(stations_data)
 
-    # HTML & JavaScript Custom Component untuk Animasi Mulus Tanpa Refresh
     html_code = f"""
     <!DOCTYPE html>
     <html>
@@ -128,7 +126,7 @@ if not edited_df.empty and takt_time_sec > 0:
     <body>
         <div id="canvas-container">
             <h3 id="timer-display" style="margin: 5px 0 10px 0; color: #1f2937;">⏱️ Timer: 0.0 Detik</h3>
-            <canvas id="simCanvas" width="900" height="380"></canvas>
+            <canvas id="simCanvas" width="950" height="400"></canvas>
             <div class="controls">
                 <button onclick="startSimulation()">▶ Play Simulasi</button>
                 <button onclick="pauseSimulation()">⏸ Pause</button>
@@ -145,13 +143,16 @@ if not edited_df.empty and takt_time_sec > 0:
             let animationId = null;
             let timeElapsed = 0;
             let isRunning = false;
-            let shoePos = 0; // Posisi pergerakan sepatu di konveyor
+            let shoePos = 0;
 
             const mid = Math.ceil(stations.length / 2);
             const topStations = stations.slice(0, mid);
             const bottomStations = stations.slice(mid);
             const maxCols = Math.max(topStations.length, bottomStations.length);
             const colWidth = canvas.width / (maxCols + 0.5);
+
+            // Inisialisasi progress kerja masing-masing stasiun (0 hingga 100%)
+            let stationProgress = stations.map(() => 0);
 
             function drawScene() {{
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -160,88 +161,121 @@ if not edited_df.empty and takt_time_sec > 0:
                 ctx.fillStyle = "#f3f4f6";
                 ctx.strokeStyle = "#374151";
                 ctx.lineWidth = 2;
-                ctx.fillRect(50, 150, canvas.width - 100, 80);
-                ctx.strokeRect(50, 150, canvas.width - 100, 80);
+                ctx.fillRect(50, 160, canvas.width - 100, 80);
+                ctx.strokeRect(50, 160, canvas.width - 100, 80);
 
-                // Garis putus-putus konveyor berjalan
                 ctx.strokeStyle = "#9ca3af";
                 ctx.setLineDash([10, 10]);
                 ctx.beginPath();
-                ctx.moveTo(50, 190);
-                ctx.lineTo(canvas.width - 50, 190);
+                ctx.moveTo(50, 200);
+                ctx.lineTo(canvas.width - 50, 200);
                 ctx.stroke();
                 ctx.setLineDash([]);
 
+                let globalIndex = 0;
+
                 // 2. Gambar Stasiun ATAS
                 topStations.forEach((stn, i) => {{
-                    let x = 100 + i * colWidth;
-                    let y = 60;
-                    
+                    let x = 90 + i * colWidth;
+                    let y = 70;
+                    let prog = stationProgress[globalIndex];
+
                     // Kotak Meja Operator
                     ctx.fillStyle = stn.is_bottleneck ? "#ef4444" : "#3b82f6";
-                    ctx.fillRect(x - 45, y - 25, 90, 50);
+                    ctx.fillRect(x - 45, y - 30, 90, 60);
                     ctx.strokeStyle = "#000";
-                    ctx.strokeRect(x - 45, y - 25, 90, 50);
+                    ctx.strokeRect(x - 45, y - 30, 90, 60);
 
-                    // Teks Stasiun & CT
+                    // Teks Nama & CT
                     ctx.fillStyle = "#ffffff";
-                    ctx.font = "bold 12px Arial";
+                    ctx.font = "bold 11px Arial";
                     ctx.textAlign = "center";
-                    ctx.fillText(stn.name, x, y - 5);
-                    ctx.font = "11px Arial";
-                    ctx.fillText("CT: " + stn.ct.toFixed(1) + "s", x, y + 15);
+                    ctx.fillText(stn.name, x, y - 12);
+                    ctx.font = "10px Arial";
+                    ctx.fillText("CT: " + stn.ct.toFixed(1) + "s", x, y + 2);
+
+                    // Progress Bar kecil di dalam kotak meja stasiun
+                    ctx.fillStyle = "#111827";
+                    ctx.fillRect(x - 40, y + 12, 80, 8);
+                    ctx.fillStyle = prog >= 100 ? "#10b981" : "#f59e0b";
+                    ctx.fillRect(x - 40, y + 12, (80 * (prog / 100)), 8);
 
                     // Ikon Operator 👤
                     ctx.fillStyle = "#1f2937";
-                    ctx.font = "16px Arial";
-                    ctx.fillText("👤 Operator", x, y - 35);
+                    ctx.font = "14px Arial";
+                    ctx.fillText("👤", x, y - 38);
+
+                    globalIndex++;
                 }});
 
                 // 3. Gambar Stasiun BAWAH
                 bottomStations.forEach((stn, i) => {{
-                    let x = 100 + i * colWidth;
-                    let y = 310;
-                    
+                    let x = 90 + i * colWidth;
+                    let y = 320;
+                    let prog = stationProgress[globalIndex];
+
                     // Kotak Meja Operator
                     ctx.fillStyle = stn.is_bottleneck ? "#ef4444" : "#3b82f6";
-                    ctx.fillRect(x - 45, y - 25, 90, 50);
+                    ctx.fillRect(x - 45, y - 30, 90, 60);
                     ctx.strokeStyle = "#000";
-                    ctx.strokeRect(x - 45, y - 25, 90, 50);
+                    ctx.strokeRect(x - 45, y - 30, 90, 60);
 
-                    // Teks Stasiun & CT
+                    // Teks Nama & CT
                     ctx.fillStyle = "#ffffff";
-                    ctx.font = "bold 12px Arial";
+                    ctx.font = "bold 11px Arial";
                     ctx.textAlign = "center";
-                    ctx.fillText(stn.name, x, y - 5);
-                    ctx.font = "11px Arial";
-                    ctx.fillText("CT: " + stn.ct.toFixed(1) + "s", x, y + 15);
+                    ctx.fillText(stn.name, x, y - 12);
+                    ctx.font = "10px Arial";
+                    ctx.fillText("CT: " + stn.ct.toFixed(1) + "s", x, y + 2);
+
+                    // Progress Bar kecil di dalam kotak meja stasiun
+                    ctx.fillStyle = "#111827";
+                    ctx.fillRect(x - 40, y + 12, 80, 8);
+                    ctx.fillStyle = prog >= 100 ? "#10b981" : "#f59e0b";
+                    ctx.fillRect(x - 40, y + 12, (80 * (prog / 100)), 8);
 
                     // Ikon Operator 👤
                     ctx.fillStyle = "#1f2937";
-                    ctx.font = "16px Arial";
-                    ctx.fillText("👤 Operator", x, y + 45);
+                    ctx.font = "14px Arial";
+                    ctx.fillText("👤", x, y + 48);
+
+                    globalIndex++;
                 }});
 
                 // 4. Gambar Sepatu (👟) Berjalan di Konveyor Tengah
-                let currentShoeX = 80 + (shoePos % (canvas.width - 160));
+                let currentShoeX = 70 + (shoePos % (canvas.width - 140));
                 ctx.fillStyle = "#10b981";
                 ctx.beginPath();
-                ctx.arc(currentShoeX, 190, 18, 0, Math.PI * 2);
+                ctx.arc(currentShoeX, 200, 16, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.strokeStyle = "#047857";
                 ctx.lineWidth = 2;
                 ctx.stroke();
 
                 ctx.fillStyle = "#ffffff";
-                ctx.font = "14px Arial";
+                ctx.font = "13px Arial";
                 ctx.textAlign = "center";
-                ctx.fillText("👟", currentShoeX, 195);
+                ctx.fillText("👟", currentShoeX, 204);
             }}
 
             function update() {{
                 if (!isRunning) return;
+                
+                // Tambah waktu riil (0.1 detik per frame)
                 timeElapsed += 0.1;
-                shoePos += 2; // Kecepatan gerak sepatu
+                shoePos += 1.5;
+
+                // Update progres pengerjaan masing-masing stasiun secara mandiri berdasarkan Cycle Time (ct)
+                stations.forEach((stn, idx) => {{
+                    // Kecepatan progress bertambah proporsional terhadap CT-nya
+                    let speedIncrement = (0.1 / stn.ct) * 100;
+                    stationProgress[idx] += speedIncrement;
+                    
+                    if (stationProgress[idx] >= 100) {{
+                        // Reset progress jika satu siklus selesai (Looping kerja operator)
+                        stationProgress[idx] = 0; 
+                    }}
+                }});
 
                 timerDisplay.innerText = "⏱️ Timer Berjalan: " + timeElapsed.toFixed(1) + " Detik";
                 
@@ -265,18 +299,18 @@ if not edited_df.empty and takt_time_sec > 0:
                 pauseSimulation();
                 timeElapsed = 0;
                 shoePos = 0;
+                stationProgress = stations.map(() => 0);
                 timerDisplay.innerText = "⏱️ Timer: 0.0 Detik";
                 drawScene();
             }}
 
-            // Render awal saat pertama kali load
             drawScene();
         </script>
     </body>
     </html>
     """
 
-    st.components.v1.html(html_code, height=480, scrolling=False)
+    st.components.v1.html(html_code, height=460, scrolling=False)
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
@@ -302,4 +336,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_video")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_video_prog")
