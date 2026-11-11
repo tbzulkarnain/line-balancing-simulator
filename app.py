@@ -231,4 +231,116 @@ if not edited_df.empty and takt_time_sec > 0:
                     ctx.strokeRect(x - 48, y - 35, 96, 70);
 
                     // Teks Nama & CT
-                    ctx.
+                    ctx.fillStyle = "#ffffff";
+                    ctx.font = "bold 12px Arial";
+                    ctx.textAlign = "center";
+                    ctx.fillText(stn.name, x, y - 12);
+                    ctx.font = "11px Arial";
+                    ctx.fillText("CT: " + stn.ct.toFixed(1) + "s", x, y + 5);
+
+                    // Progress Bar Kerja
+                    ctx.fillStyle = "#111827";
+                    ctx.fillRect(x - 40, y + 15, 80, 10);
+                    ctx.fillStyle = prog >= 100 ? "#10b981" : "#f59e0b";
+                    ctx.fillRect(x - 40, y + 15, (80 * (prog / 100)), 10);
+
+                    // Ikon Operator 👤
+                    ctx.fillStyle = "#1f2937";
+                    ctx.font = "16px Arial";
+                    ctx.fillText("👤", x, y + 52);
+
+                    globalIndex++;
+                }});
+
+                // 4. Sepatu (👟) Berjalan di Konveyor Tengah
+                let currentShoeX = 70 + (shoePos % (canvas.width - 140));
+                ctx.fillStyle = "#10b981";
+                ctx.beginPath();
+                ctx.arc(currentShoeX, 230, 20, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = "#047857";
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "15px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText("👟", currentShoeX, 235);
+            }}
+
+            function update() {{
+                if (!isRunning) return;
+                
+                timeElapsed += 0.1;
+                shoePos += 1.5;
+
+                stations.forEach((stn, idx) => {{
+                    let speedIncrement = (0.1 / stn.ct) * 100;
+                    stationProgress[idx] += speedIncrement;
+                    
+                    if (stationProgress[idx] >= 100) {{
+                        stationProgress[idx] = 0; 
+                    }}
+                }});
+
+                timerDisplay.innerText = "⏱️ Timer Berjalan: " + timeElapsed.toFixed(1) + " Detik";
+                
+                drawScene();
+                animationId = requestAnimationFrame(update);
+            }}
+
+            function startSimulation() {{
+                if (!isRunning) {{
+                    isRunning = true;
+                    update();
+                }}
+            }}
+
+            function pauseSimulation() {{
+                isRunning = false;
+                cancelAnimationFrame(animationId);
+            }}
+
+            function resetSimulation() {{
+                pauseSimulation();
+                timeElapsed = 0;
+                shoePos = 0;
+                stationProgress = stations.map(() => 0);
+                timerDisplay.innerText = "⏱️ Timer: 0.0 Detik";
+                drawScene();
+            }}
+
+            drawScene();
+        </script>
+    </body>
+    </html>
+    """
+
+    # Mengatur tinggi Streamlit component iframe agar lebih luas (540px) sehingga tombol play tidak terpotong
+    st.components.v1.html(html_code, height=540, scrolling=False)
+
+    # --- STEP 3: YAMAZUMI CHART ---
+    st.markdown("---")
+    st.subheader("3. Yamazumi Chart (Analisis Cycle Time vs Takt Time)")
+    
+    import plotly.graph_objects as go
+    fig_bar = go.Figure()
+    colors = ['#EF4444' if i == bottleneck_idx else '#3B82F6' for i in range(len(df))]
+
+    fig_bar.add_trace(go.Bar(
+        x=df["Nama Proses"],
+        y=df["Effective CT (s)"],
+        text=[f"{ct:.1f}s" for ct in df["Effective CT (s)"]],
+        textposition='auto',
+        marker_color=colors
+    ))
+
+    fig_bar.add_hline(
+        y=takt_time_sec, 
+        line_dash="dash", 
+        line_color="red", 
+        annotation_text=f"Takt Time Target ({takt_time_sec:.1f}s)"
+    )
+
+    fig_bar.update_layout(height=380, template="plotly_white")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_video_fixed")
