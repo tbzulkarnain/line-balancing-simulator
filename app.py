@@ -95,7 +95,6 @@ if not edited_df.empty and takt_time_sec > 0:
                 
                 box_color = "#EF4444" if is_bn else "#3B82F6"
                 
-                # Menggunakan symbol 'square' yang aman didukung Plotly
                 fig.add_trace(go.Scatter(
                     x=[x_stations[i]], y=[0],
                     mode="markers+text",
@@ -142,7 +141,8 @@ if not edited_df.empty and takt_time_sec > 0:
                 plot_bgcolor="rgba(0,0,0,0)"
             )
 
-            anim_placeholder.plotly_chart(fig, use_container_width=True)
+            # Menggunakan unique key agar Streamlit tidak error Duplicate Element ID saat loop animasi
+            anim_placeholder.plotly_chart(fig, use_container_width=True, key=f"anim_frame_{step}")
             time.sleep(0.15)
 
     # --- STEP 3: GRAFIK YAMAZUMI ---
@@ -168,4 +168,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True)
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart")
