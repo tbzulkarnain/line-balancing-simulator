@@ -4,11 +4,12 @@ import numpy as np
 import plotly.graph_objects as go
 import time
 
-st.set_page_config(page_title="Line Balancing Flow Simulator", layout="wide")
+st.set_page_config(page_title="Line Balancing Conveyor Simulator", layout="wide")
 
-st.title("🏭 Production Line Balancing & Visualizer")
+st.title("🏭 Production Line Conveyor & Station Simulator")
+st.caption("Simulasi meja produksi berhadapan (Conveyor-style) dengan Takt Time counter dan Cycle Time per stasiun.")
 
-# --- SIDEBAR: OPERATIONAL PARAMETERS ---
+# --- SIDEBAR: PARAMETER OPERASIONAL ---
 st.sidebar.header("⚙️ Parameter Operasional")
 available_time_min = st.sidebar.number_input("Waktu Kerja Efektif (Menit/Shift)", value=480, step=10)
 target_demand = st.sidebar.number_input("Target Production (Pcs/Shift)", value=400, step=10)
@@ -16,14 +17,15 @@ target_demand = st.sidebar.number_input("Target Production (Pcs/Shift)", value=4
 takt_time_sec = (available_time_min * 60) / target_demand if target_demand > 0 else 0
 st.sidebar.metric(label="⏱️ Takt Time Target", value=f"{takt_time_sec:.2f} det/pcs")
 
-# --- STEP 1: INPUT TABEL PROSES ---
-st.subheader("1. Data Input Proses & Manpower")
+# --- STEP 1: INPUT DATA TABEL PROSES ---
+st.subheader("1. Data Input Proses & Alokasi Meja Produksi")
+st.write("Isi proses produksi. Sistem otomatis menyebar stasiun secara berpasangan di sisi atas dan bawah konveyor.")
 
 default_data = pd.DataFrame({
-    "Nama Proses": ["Cutting", "Sewing", "Assembly", "Packing"],
-    "Cycle Time Base (s)": [30.0, 50.0, 75.0, 25.0],
-    "Allowance (%)": [10.0, 10.0, 10.0, 10.0],
-    "Actual MP": [1, 1, 1, 1]
+    "Nama Proses": ["Cutting Prep", "Stitching Upper", "Stitching Tongue", "Eyestay Attach", "Assembly 1", "Assembly 2", "Outsole Cement", "Packing"],
+    "Cycle Time Base (s)": [18.0, 22.0, 19.0, 25.0, 21.0, 20.0, 24.0, 17.0],
+    "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+    "Actual MP": [1, 1, 1, 1, 1, 1, 1, 1]
 })
 
 edited_df = st.data_editor(
@@ -34,14 +36,13 @@ edited_df = st.data_editor(
         "Nama Proses": st.column_config.TextColumn("Nama Proses", required=True),
         "Cycle Time Base (s)": st.column_config.NumberColumn("CT Base (s)", min_value=0.1, format="%.2f"),
         "Allowance (%)": st.column_config.NumberColumn("Allowance (%)", min_value=0.0, max_value=100.0, format="%.1f"),
-        "Actual MP": st.column_config.NumberColumn("Actual MP (Isi User)", min_value=1, step=1, required=True)
+        "Actual MP": st.column_config.NumberColumn("Actual MP", min_value=1, step=1, required=True)
     }
 )
 
 if not edited_df.empty and takt_time_sec > 0:
     df = edited_df.copy()
     df["Standard Time (s)"] = df["Cycle Time Base (s)"] * (1 + df["Allowance (%)"] / 100)
-    df["Required MP (Calc)"] = df["Standard Time (s)"] / takt_time_sec
     df["Effective CT (s)"] = df["Standard Time (s)"] / df["Actual MP"]
     
     max_ct = df["Effective CT (s)"].max()
@@ -57,97 +58,127 @@ if not edited_df.empty and takt_time_sec > 0:
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("🎯 Balancing Rate", f"{balancing_rate:.2f}%")
     col2.metric("🚨 Bottleneck", f"{bottleneck_process}", delta=f"{max_ct:.1f} s", delta_color="inverse")
-    col3.metric("👥 Total Actual MP", f"{df['Actual MP'].sum()} Orang")
-    col4.metric("📦 Est. Output / Jam", f"{int(3600 / max_ct)} pcs")
+    col3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
+    col4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI FLOW DENGAN SKEMA GAMBAR (CONVEYOR STREAM) ---
+    # --- STEP 2: ANIMASI MEJA KONVEYOR BERHADAPAN ---
     st.markdown("---")
-    st.subheader("2. 🎬 Visual Animasi Aliran Produksi & Bottleneck")
-    st.caption("Visualisasi posisi barang (📦) bergerak dari Raw Material melintasi setiap stasiun kerja sesuai Cycle Time aktual.")
+    st.subheader("2. 🎬 Simulasi Live Meja Aliran Konveyor Produksi")
+    st.caption("Visualisasi posisi operator atas & bawah, konveyor tengah, timer detik berjalan, dan pergerakan unit sepatu sesuai Takt Time.")
 
-    if st.button("▶️ Jalankan Animasi Aliran Produksi"):
-        anim_placeholder = st.empty()
+    col_sim_btn, col_sim_info = st.columns([1, 3])
+    with col_sim_btn:
+        run_simulation = st.button("▶️ Jalankan Simulasi Konveyor", type="primary")
+
+    if run_simulation:
+        sim_placeholder = st.empty()
+        timer_placeholder = st.empty()
         
-        stations = list(df["Nama Proses"])
+        stations = df.to_dict('records')
         n_stations = len(stations)
         
-        x_raw = 0
-        x_stations = list(range(1, n_stations + 1))
-        total_steps = 50
+        # Bagi stasiun menjadi dua sisi: Atas (Top) dan Bawah (Bottom)
+        mid_point = (n_stations + 1) // 2
+        top_stations = stations[:mid_point]
+        bottom_stations = stations[mid_point:]
         
-        for step in range(total_steps):
+        total_simulation_steps = 40
+        
+        for step in range(total_simulation_steps):
+            # Hitung waktu detik simulasi berjalan berdasarkan takt time
+            current_second = int(step * (takt_time_sec / 5))
+            timer_placeholder.markdown(f"### ⏱️ **Timer Berjalan: {current_second} Detik** *(Takt Time Target: {takt_time_sec:.1f}s)*")
+            
             fig = go.Figure()
+            
+            # 1. Gambar Konveyor Tengah (Kotak Panjang Tempat Sepatu Berjalan)
+            fig.add_shape(
+                type="rect",
+                x0=-0.5, y0=0.3, x1=max(len(top_stations), len(bottom_stations)) - 0.5, y2=1.7,
+                fillcolor="#F3F4F6", line=dict(color="#374151", width=2),
+                layer="below"
+            )
+            
+            # 2. Gambar Stasiun Sisi ATAS (Y = 2.5)
+            for i, stn in enumerate(top_stations):
+                is_bn = (stn["Nama Proses"] == bottleneck_process)
+                box_color = "#EF4444" if is_bn else "#3B82F6"
+                ct_val = stn["Effective CT (s)"]
+                
+                # Kotak Meja Operator Atas
+                fig.add_trace(go.Scatter(
+                    x=[i], y=[2.6],
+                    mode="markers+text",
+                    marker=dict(symbol="square", size=45, color=box_color, line=dict(width=2, color="black")),
+                    text=[f"<b>{stn['Nama Proses']}</b><br>⏱️ CT: {ct_val:.1f}s"],
+                    textposition="top center",
+                    showlegend=False
+                ))
+                # Simbol Operator (Kepala 👤 di atas meja)
+                fig.add_trace(go.Scatter(
+                    x=[i], y=[3.3],
+                    mode="text",
+                    text=["👤 Operator"],
+                    textposition="bottom center",
+                    showlegend=False
+                ))
 
-            # 1. Gambar Raw Material (Tumpukan di Kiri)
+            # 3. Gambar Stasiun Sisi BAWAH (Y = -0.6)
+            for i, stn in enumerate(bottom_stations):
+                is_bn = (stn["Nama Proses"] == bottleneck_process)
+                box_color = "#EF4444" if is_bn else "#3B82F6"
+                ct_val = stn["Effective CT (s)"]
+                
+                # Kotak Meja Operator Bawah
+                fig.add_trace(go.Scatter(
+                    x=[i], y=[-0.6],
+                    mode="markers+text",
+                    marker=dict(symbol="square", size=45, color=box_color, line=dict(width=2, color="black")),
+                    text=[f"⏱️ CT: {ct_val:.1f}s<br><b>{stn['Nama Proses']}</b>"],
+                    textposition="bottom center",
+                    showlegend=False
+                ))
+                # Simbol Operator (Kepala 👤 di bawah meja)
+                    # Simbol Operator
+                fig.add_trace(go.Scatter(
+                    x=[i], y=[-1.3],
+                    mode="text",
+                    text=["👤 Operator"],
+                    textposition="top center",
+                    showlegend=False
+                ))
+
+            # 4. Pergerakan Sepatu (👟) di Konveyor Tengah Sesuai Takt Time / Step
+            # Sepatu bergerak dari kiri ke kanan melintasi konveyor
+            shoe_position = (step % max(len(top_stations), len(bottom_stations)))
+            
             fig.add_trace(go.Scatter(
-                x=[x_raw], y=[0],
+                x=[shoe_position], y=[1.0],
                 mode="text+markers",
-                marker=dict(symbol="square", size=28, color="#10B981"),
-                text=["🧱 Raw Material"],
-                textposition="bottom center",
+                marker=dict(size=25, color="#10B981", symbol="diamond"),
+                text=["👟 WIP Shoebox"],
+                textposition="middle center",
                 showlegend=False
             ))
 
-            # 2. Gambar Stasiun Kerja & Panah Alur
-            for i, st_name in enumerate(stations):
-                ct_val = df.iloc[i]["Effective CT (s)"]
-                is_bn = (i == bottleneck_idx)
-                
-                box_color = "#EF4444" if is_bn else "#3B82F6"
-                
-                fig.add_trace(go.Scatter(
-                    x=[x_stations[i]], y=[0],
-                    mode="markers+text",
-                    marker=dict(symbol="square", size=35, color=box_color, line=dict(width=2, color="black")),
-                    text=[f"⏱️ <b>{ct_val:.1f}s</b><br><br><br><b>{st_name}</b><br>(MP: {df.iloc[i]['Actual MP']})"],
-                    textposition="top center",
-                    showlegend=False
-                ))
-
-                # Panah Alur Antar Stasiun
-                prev_x = x_raw if i == 0 else x_stations[i-1]
-                fig.add_annotation(
-                    x=x_stations[i] - 0.2, y=0,
-                    ax=prev_x + 0.2, ay=0,
-                    xref="x", yref="y", axref="x", ayref="y",
-                    showarrow=True,
-                    arrowhead=3,
-                    arrowsize=1.5,
-                    arrowwidth=2,
-                    arrowcolor="#9CA3AF"
-                )
-
-            # 3. Posisi Item/Barang (📦) Bergerak
-            current_pos = (step % (n_stations + 1))
-            
-            if current_pos > 0:
-                item_x = current_pos
-                fig.add_trace(go.Scatter(
-                    x=[item_x], y=[0.15],
-                    mode="markers+text",
-                    marker=dict(symbol="square", size=20, color="#F59E0B"),
-                    text=["📦 Unit WIP"],
-                    textposition="top center",
-                    showlegend=False
-                ))
-
-            # Styling Tampilan Plotly
+            # Layout Styling Grafik Agar Bersih Seperti Skema Desain
             fig.update_layout(
-                xaxis=dict(range=[-0.5, n_stations + 1.5], showgrid=False, zeroline=False, showticklabels=False),
-                yaxis=dict(range=[-0.5, 0.8], showgrid=False, zeroline=False, showticklabels=False),
-                height=320,
-                margin=dict(l=20, r=20, t=40, b=20),
+                xaxis=dict(range=[-1, max(len(top_stations), len(bottom_stations))], showgrid=False, zeroline=False, showticklabels=False),
+                yaxis=dict(range=[-2.0, 4.0], showgrid=False, zeroline=False, showticklabels=False),
+                height=450,
+                margin=dict(l=20, r=20, t=20, b=20),
                 paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)"
+                plot_bgcolor="rgba(240,253,244,0.5)" # Background hijau muda tipis khas area produksi
             )
 
-            # Menggunakan unique key agar Streamlit tidak error Duplicate Element ID saat loop animasi
-            anim_placeholder.plotly_chart(fig, use_container_width=True, key=f"anim_frame_{step}")
-            time.sleep(0.15)
+            sim_placeholder.plotly_chart(fig, use_container_width=True, key=f"conveyor_anim_{step}")
+            time.sleep(0.2)
 
-    # --- STEP 3: GRAFIK YAMAZUMI ---
+        st.success("🎉 Simulasi Aliran Konveyor Selesai!")
+
+    # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
-    st.subheader("3. Yamazumi Chart (Cycle Time vs Takt Time)")
+    st.subheader("3. Yamazumi Chart (Analisis Cycle Time vs Takt Time)")
     
     fig_bar = go.Figure()
     colors = ['#EF4444' if i == bottleneck_idx else '#3B82F6' for i in range(len(df))]
@@ -168,4 +199,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_main")
