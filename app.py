@@ -1,13 +1,11 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
-import time
+import json
 
-st.set_page_config(page_title="Line Balancing Conveyor Simulator", layout="wide")
+st.set_page_config(page_title="Line Balancing Video Simulator", layout="wide")
 
-st.title("🏭 Production Line Conveyor & Station Simulator")
-st.caption("Simulasi meja produksi berhadapan dengan Timer Detik, Takt Time, dan Progress Cycle Time per Operator.")
+st.title("🏭 Production Line Video Simulator & Line Balancing")
+st.caption("Simulasi konveyor interaktif dengan animasi halus seperti video, timer detik, dan kecepatan kerja per stasiun.")
 
 # --- SIDEBAR: PARAMETER OPERASIONAL ---
 st.sidebar.header("⚙️ Parameter Operasional")
@@ -18,12 +16,12 @@ takt_time_sec = (available_time_min * 60) / target_demand if target_demand > 0 e
 st.sidebar.metric(label="⏱️ Takt Time Target", value=f"{takt_time_sec:.2f} det/pcs")
 
 # --- STEP 1: INPUT DATA TABEL PROSES ---
-st.subheader("1. Data Input Proses & Alokasi Meja Produksi")
-st.write("Isi proses produksi. Sistem otomatis membagi stasiun secara berpasangan di sisi atas dan bawah konveyor.")
+st.subheader("1. Data Input Proses & Cycle Time")
+st.write("Isi proses produksi. Data ini akan langsung menggerakkan animasi video konveyor di bawah.")
 
 default_data = pd.DataFrame({
     "Nama Proses": ["Cutting", "Stitching 1", "Stitching 2", "Assembly 1", "Assembly 2", "Outsole", "QC", "Packing"],
-    "Cycle Time Base (s)": [15.0, 25.0, 20.0, 30.0, 18.0, 22.0, 16.0, 12.0],
+    "Cycle Time Base (s)": [12.0, 20.0, 18.0, 25.0, 15.0, 19.0, 14.0, 10.0],
     "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
     "Actual MP": [1, 1, 1, 1, 1, 1, 1, 1]
 })
@@ -61,123 +59,230 @@ if not edited_df.empty and takt_time_sec > 0:
     col3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI MEJA KONVEYOR BERHADAPAN DENGAN TIMER & PROGRESS NYATA ---
+    # --- STEP 2: ANIMASI VIDEO HTML5 CANVAS (MULUS TANPA LAG) ---
     st.markdown("---")
-    st.subheader("2. 🎬 Simulasi Live Meja Aliran Konveyor Berdasarkan Cycle Time")
-    st.caption("Timer detik menghitung waktu operasional, sepatu (👟) bergeser di konveyor tengah sesuai penyelesaian tiap stasiun.")
+    st.subheader("2. 🎬 Simulasi Video Aliran Konveyor Berjalan")
+    st.caption("Tekan tombol Play di bawah untuk melihat animasi pergerakan sepatu dan timer detik berjalan mulus layaknya video.")
 
-    col_sim_btn, col_sim_info = st.columns([1, 3])
-    with col_sim_btn:
-        run_simulation = st.button("▶️ Jalankan Simulasi Waktu Nyata", type="primary")
+    # Siapkan data stasiun dalam format JSON untuk dikirim ke JavaScript
+    stations_data = []
+    for idx, row in df.iterrows():
+        stations_data.append({
+            "name": row["Nama Proses"],
+            "ct": float(row["Effective CT (s)"]),
+            "is_bottleneck": (row["Nama Proses"] == bottleneck_process)
+        })
 
-    if run_simulation:
-        sim_placeholder = st.empty()
-        timer_placeholder = st.empty()
-        
-        stations = df.to_dict('records')
-        n_stations = len(stations)
-        
-        mid_point = (n_stations + 1) // 2
-        top_stations = stations[:mid_point]
-        bottom_stations = stations[mid_point:]
-        
-        max_col_len = max(len(top_stations), len(bottom_stations))
-        
-        # Total durasi simulasi berdasarkan stasiun terlama dikali beberapa siklus
-        total_seconds = int(max_ct * 2) 
-        
-        for current_sec in range(0, total_seconds + 1, 2): # Increment 2 detik tiap frame supaya smooth
-            timer_placeholder.markdown(f"### ⏱️ **Timer Berjalan: {current_sec} Detik** | *Takt Time Target: {takt_time_sec:.1f}s* | *Bottleneck: {max_ct:.1f}s*")
-            
-            fig = go.Figure()
-            
-            # 1. Konveyor Tengah (Tempat Sepatu Bergeser)
-            fig.add_shape(
-                type="rect",
-                x0=-0.5, y0=0.3, x1=max_col_len - 0.5, y1=1.7,
-                fillcolor="#F3F4F6", line=dict(color="#374151", width=2)
-            )
-            
-            # 2. Stasiun Atas
-            for i, stn in enumerate(top_stations):
-                is_bn = (stn["Nama Proses"] == bottleneck_process)
-                box_color = "#EF4444" if is_bn else "#3B82F6"
-                ct_val = stn["Effective CT (s)"]
+    stations_json = json.dumps(stations_data)
+
+    # HTML & JavaScript Custom Component untuk Animasi Mulus Tanpa Refresh
+    html_code = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background-color: #f9fafb;
+                margin: 0;
+                padding: 10px;
+                text-align: center;
+            }}
+            #canvas-container {{
+                background: #e6f4ea;
+                border: 2px solid #d1d5db;
+                border-radius: 10px;
+                padding: 10px;
+                display: inline-block;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            }}
+            canvas {{
+                background: #ffffff;
+                border-radius: 6px;
+            }}
+            .controls {{
+                margin-top: 10px;
+            }}
+            button {{
+                background-color: #2563eb;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                font-size: 16px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-weight: bold;
+                margin: 5px;
+            }}
+            button:hover {{
+                background-color: #1d4ed8;
+            }}
+            button.reset {{
+                background-color: #dc2626;
+            }}
+            button.reset:hover {{
+                background-color: #b91c1c;
+            }}
+        </style>
+    </head>
+    <body>
+        <div id="canvas-container">
+            <h3 id="timer-display" style="margin: 5px 0 10px 0; color: #1f2937;">⏱️ Timer: 0.0 Detik</h3>
+            <canvas id="simCanvas" width="900" height="380"></canvas>
+            <div class="controls">
+                <button onclick="startSimulation()">▶ Play Simulasi</button>
+                <button onclick="pauseSimulation()">⏸ Pause</button>
+                <button class="reset" onclick="resetSimulation()">🔄 Reset</button>
+            </div>
+        </div>
+
+        <script>
+            const stations = {stations_json};
+            const canvas = document.getElementById("simCanvas");
+            const ctx = canvas.getContext("2d");
+            const timerDisplay = document.getElementById("timer-display");
+
+            let animationId = null;
+            let timeElapsed = 0;
+            let isRunning = false;
+            let shoePos = 0; // Posisi pergerakan sepatu di konveyor
+
+            const mid = Math.ceil(stations.length / 2);
+            const topStations = stations.slice(0, mid);
+            const bottomStations = stations.slice(mid);
+            const maxCols = Math.max(topStations.length, bottomStations.length);
+            const colWidth = canvas.width / (maxCols + 0.5);
+
+            function drawScene() {{
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // 1. Gambar Jalur Konveyor Tengah
+                ctx.fillStyle = "#f3f4f6";
+                ctx.strokeStyle = "#374151";
+                ctx.lineWidth = 2;
+                ctx.fillRect(50, 150, canvas.width - 100, 80);
+                ctx.strokeRect(50, 150, canvas.width - 100, 80);
+
+                // Garis putus-putus konveyor berjalan
+                ctx.strokeStyle = "#9ca3af";
+                ctx.setLineDash([10, 10]);
+                ctx.beginPath();
+                ctx.moveTo(50, 190);
+                ctx.lineTo(canvas.width - 50, 190);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // 2. Gambar Stasiun ATAS
+                topStations.forEach((stn, i) => {{
+                    let x = 100 + i * colWidth;
+                    let y = 60;
+                    
+                    // Kotak Meja Operator
+                    ctx.fillStyle = stn.is_bottleneck ? "#ef4444" : "#3b82f6";
+                    ctx.fillRect(x - 45, y - 25, 90, 50);
+                    ctx.strokeStyle = "#000";
+                    ctx.strokeRect(x - 45, y - 25, 90, 50);
+
+                    // Teks Stasiun & CT
+                    ctx.fillStyle = "#ffffff";
+                    ctx.font = "bold 12px Arial";
+                    ctx.textAlign = "center";
+                    ctx.fillText(stn.name, x, y - 5);
+                    ctx.font = "11px Arial";
+                    ctx.fillText("CT: " + stn.ct.toFixed(1) + "s", x, y + 15);
+
+                    // Ikon Operator 👤
+                    ctx.fillStyle = "#1f2937";
+                    ctx.font = "16px Arial";
+                    ctx.fillText("👤 Operator", x, y - 35);
+                }});
+
+                // 3. Gambar Stasiun BAWAH
+                bottomStations.forEach((stn, i) => {{
+                    let x = 100 + i * colWidth;
+                    let y = 310;
+                    
+                    // Kotak Meja Operator
+                    ctx.fillStyle = stn.is_bottleneck ? "#ef4444" : "#3b82f6";
+                    ctx.fillRect(x - 45, y - 25, 90, 50);
+                    ctx.strokeStyle = "#000";
+                    ctx.strokeRect(x - 45, y - 25, 90, 50);
+
+                    // Teks Stasiun & CT
+                    ctx.fillStyle = "#ffffff";
+                    ctx.font = "bold 12px Arial";
+                    ctx.textAlign = "center";
+                    ctx.fillText(stn.name, x, y - 5);
+                    ctx.font = "11px Arial";
+                    ctx.fillText("CT: " + stn.ct.toFixed(1) + "s", x, y + 15);
+
+                    // Ikon Operator 👤
+                    ctx.fillStyle = "#1f2937";
+                    ctx.font = "16px Arial";
+                    ctx.fillText("👤 Operator", x, y + 45);
+                }});
+
+                // 4. Gambar Sepatu (👟) Berjalan di Konveyor Tengah
+                let currentShoeX = 80 + (shoePos % (canvas.width - 160));
+                ctx.fillStyle = "#10b981";
+                ctx.beginPath();
+                ctx.arc(currentShoeX, 190, 18, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = "#047857";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "14px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText("👟", currentShoeX, 195);
+            }}
+
+            function update() {{
+                if (!isRunning) return;
+                timeElapsed += 0.1;
+                shoePos += 2; // Kecepatan gerak sepatu
+
+                timerDisplay.innerText = "⏱️ Timer Berjalan: " + timeElapsed.toFixed(1) + " Detik";
                 
-                # Status pengerjaan berdasarkan waktu berjalan vs cycle time stasiun
-                progress_status = "⚙️ Working..." if (current_sec % ct_val) < (ct_val * 0.8) else "✅ Ready to Pass"
-                
-                fig.add_trace(go.Scatter(
-                    x=[i], y=[2.6],
-                    mode="markers+text",
-                    marker=dict(symbol="square", size=50, color=box_color, line=dict(width=2, color="black")),
-                    text=[f"<b>{stn['Nama Proses']}</b><br>CT: {ct_val:.1f}s<br><i>{progress_status}</i>"],
-                    textposition="top center",
-                    showlegend=False
-                ))
-                fig.add_trace(go.Scatter(
-                    x=[i], y=[3.5],
-                    mode="text",
-                    text=["👤 Operator Atas"],
-                    textposition="bottom center",
-                    showlegend=False
-                ))
+                drawScene();
+                animationId = requestAnimationFrame(update);
+            }}
 
-            # 3. Stasiun Bawah
-            for i, stn in enumerate(bottom_stations):
-                is_bn = (stn["Nama Proses"] == bottleneck_process)
-                box_color = "#EF4444" if is_bn else "#3B82F6"
-                ct_val = stn["Effective CT (s)"]
-                
-                progress_status = "⚙️ Working..." if (current_sec % ct_val) < (ct_val * 0.8) else "✅ Ready to Pass"
-                
-                fig.add_trace(go.Scatter(
-                    x=[i], y=[-0.6],
-                    mode="markers+text",
-                    marker=dict(symbol="square", size=50, color=box_color, line=dict(width=2, color="black")),
-                    text=[f"CT: {ct_val:.1f}s<br><b>{stn['Nama Proses']}</b><br><i>{progress_status}</i>"],
-                    textposition="bottom center",
-                    showlegend=False
-                ))
-                fig.add_trace(go.Scatter(
-                    x=[i], y=[-1.5],
-                    mode="text",
-                    text=["👤 Operator Bawah"],
-                    textposition="top center",
-                    showlegend=False
-                ))
+            function startSimulation() {{
+                if (!isRunning) {{
+                    isRunning = true;
+                    update();
+                }}
+            }}
 
-            # 4. Pergeseran Sepatu (👟) di Konveyor Tengah Mengikuti Waktu
-            # Posisi sepatu bergerak maju berdasarkan rasio waktu terhadap max cycle time
-            shoe_progress_x = (current_sec / max_ct) % max_col_len
-            
-            fig.add_trace(go.Scatter(
-                x=[shoe_progress_x], y=[1.0],
-                mode="text+markers",
-                marker=dict(size=28, color="#10B981", symbol="diamond"),
-                text=["👟 WIP Shoebox"],
-                textposition="middle center",
-                showlegend=False
-            ))
+            function pauseSimulation() {{
+                isRunning = false;
+                cancelAnimationFrame(animationId);
+            }}
 
-            fig.update_layout(
-                xaxis=dict(range=[-1, max_col_len], showgrid=False, zeroline=False, showticklabels=False),
-                yaxis=dict(range=[-2.2, 4.2], showgrid=False, zeroline=False, showticklabels=False),
-                height=480,
-                margin=dict(l=20, r=20, t=20, b=20),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(240,253,244,0.5)"
-            )
+            function resetSimulation() {{
+                pauseSimulation();
+                timeElapsed = 0;
+                shoePos = 0;
+                timerDisplay.innerText = "⏱️ Timer: 0.0 Detik";
+                drawScene();
+            }}
 
-            sim_placeholder.plotly_chart(fig, use_container_width=True, key=f"conveyor_realtime_{current_sec}")
-            time.sleep(0.15)
+            // Render awal saat pertama kali load
+            drawScene();
+        </script>
+    </body>
+    </html>
+    """
 
-        st.success("🎉 Simulasi Aliran Waktu Nyata Selesai!")
+    st.components.v1.html(html_code, height=480, scrolling=False)
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
     st.subheader("3. Yamazumi Chart (Analisis Cycle Time vs Takt Time)")
     
+    import plotly.graph_objects as go
     fig_bar = go.Figure()
     colors = ['#EF4444' if i == bottleneck_idx else '#3B82F6' for i in range(len(df))]
 
@@ -197,4 +302,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_main")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_video")
