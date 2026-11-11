@@ -85,26 +85,24 @@ if not edited_df.empty and takt_time_sec > 0:
         total_simulation_steps = 40
         
         for step in range(total_simulation_steps):
-            # Hitung waktu detik simulasi berjalan berdasarkan takt time
             current_second = int(step * (takt_time_sec / 5))
             timer_placeholder.markdown(f"### ⏱️ **Timer Berjalan: {current_second} Detik** *(Takt Time Target: {takt_time_sec:.1f}s)*")
             
             fig = go.Figure()
             
-            # 1. Gambar Konveyor Tengah (Kotak Panjang Tempat Sepatu Berjalan)
+            # 1. Gambar Konveyor Tengah (Menggunakan y1 sebagai pengganti y2 yang valid)
             fig.add_shape(
                 type="rect",
-                x0=-0.5, y0=0.3, x1=max(len(top_stations), len(bottom_stations)) - 0.5, y2=1.7,
+                x0=-0.5, y0=0.3, x1=max(len(top_stations), len(bottom_stations)) - 0.5, y1=1.7,
                 fillcolor="#F3F4F6", line=dict(color="#374151", width=2)
             )
             
-            # 2. Gambar Stasiun Sisi ATAS (Y = 2.5)
+            # 2. Gambar Stasiun Sisi ATAS (Y = 2.6)
             for i, stn in enumerate(top_stations):
                 is_bn = (stn["Nama Proses"] == bottleneck_process)
                 box_color = "#EF4444" if is_bn else "#3B82F6"
                 ct_val = stn["Effective CT (s)"]
                 
-                # Kotak Meja Operator Atas
                 fig.add_trace(go.Scatter(
                     x=[i], y=[2.6],
                     mode="markers+text",
@@ -113,7 +111,6 @@ if not edited_df.empty and takt_time_sec > 0:
                     textposition="top center",
                     showlegend=False
                 ))
-                # Simbol Operator (Kepala 👤 di atas meja)
                 fig.add_trace(go.Scatter(
                     x=[i], y=[3.3],
                     mode="text",
@@ -128,7 +125,6 @@ if not edited_df.empty and takt_time_sec > 0:
                 box_color = "#EF4444" if is_bn else "#3B82F6"
                 ct_val = stn["Effective CT (s)"]
                 
-                # Kotak Meja Operator Bawah
                 fig.add_trace(go.Scatter(
                     x=[i], y=[-0.6],
                     mode="markers+text",
@@ -137,7 +133,6 @@ if not edited_df.empty and takt_time_sec > 0:
                     textposition="bottom center",
                     showlegend=False
                 ))
-                # Simbol Operator (Kepala 👤 di bawah meja)
                 fig.add_trace(go.Scatter(
                     x=[i], y=[-1.3],
                     mode="text",
@@ -146,7 +141,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     showlegend=False
                 ))
 
-            # 4. Pergerakan Sepatu (👟) di Konveyor Tengah Sesuai Takt Time / Step
+            # 4. Pergerakan Sepatu (👟) di Konveyor Tengah
             shoe_position = (step % max(len(top_stations), len(bottom_stations)))
             
             fig.add_trace(go.Scatter(
@@ -158,7 +153,6 @@ if not edited_df.empty and takt_time_sec > 0:
                 showlegend=False
             ))
 
-            # Layout Styling Grafik
             fig.update_layout(
                 xaxis=dict(range=[-1, max(len(top_stations), len(bottom_stations))], showgrid=False, zeroline=False, showticklabels=False),
                 yaxis=dict(range=[-2.0, 4.0], showgrid=False, zeroline=False, showticklabels=False),
