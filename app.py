@@ -5,7 +5,7 @@ import json
 st.set_page_config(page_title="Line Balancing Conveyor Simulator", layout="wide")
 
 st.title("🏭 Production Line Video Simulator & Line Balancing")
-st.caption("Simulasi interaktif: Sepatu ditarik dari konveyor ke meja operator, dikerjakan sesuai Cycle Time, lalu dikembalikan ke konveyor.")
+st.caption("Simulasi konveyor: Sepatu maju per langkah takt time, diambil operator ke meja kerja, lalu dilanjutkan ke stasiun berikutnya.")
 
 # --- SIDEBAR: PARAMETER OPERASIONAL ---
 st.sidebar.header("⚙️ Parameter Operasional")
@@ -17,7 +17,7 @@ st.sidebar.metric(label="⏱️ Takt Time Target", value=f"{takt_time_sec:.2f} d
 
 # --- STEP 1: INPUT DATA TABEL PROSES ---
 st.subheader("1. Data Input Proses & Cycle Time")
-st.write("Isi proses produksi. Operator akan mengambil sepatu dari konveyor, memprosesnya sesuai Cycle Time, lalu melanjutkannya.")
+st.write("Isi proses produksi. Sepatu di konveyor akan ditarik oleh operator sampingnya sesuai ketukan langkah takt time.")
 
 default_data = pd.DataFrame({
     "Nama Proses": ["Cutting", "Stitching 1", "Stitching 2", "Assembly 1", "Assembly 2", "Outsole", "QC", "Packing"],
@@ -59,10 +59,10 @@ if not edited_df.empty and takt_time_sec > 0:
     col3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI KONVEYOR & PENARIKAN SEPATU KE MEJA OPERATOR ---
+    # --- STEP 2: ANIMASI STEP-BY-STEP TAKT TIME & PENGAMBILAN SEPATU ---
     st.markdown("---")
-    st.subheader("2. 🎬 Simulasi Aliran: Konveyor ➔ Meja Operator ➔ Konveyor")
-    st.caption("Sepatu meluncur di konveyor tengah, ditarik ke meja operator atas/bawah untuk diproses sesuai Cycle Time, lalu dikembalikan ke jalur konveyor.")
+    st.subheader("2. 🎬 Simulasi Konveyor Langkah Takt Time & Operator")
+    st.caption("Sepatu berjalan di konveyor tengah, ditarik ke meja operator di sampingnya untuk diproses, lalu dilanjutkan.")
 
     stations_data = []
     for idx, row in df.iterrows():
@@ -151,7 +151,7 @@ if not edited_df.empty and takt_time_sec > 0:
             let animationId = null;
             let timeElapsed = 0;
             let isRunning = false;
-            let globalStep = 0;
+            let stepCounter = 0;
 
             const mid = Math.ceil(stations.length / 2);
             const topStations = stations.slice(0, mid);
@@ -159,8 +159,10 @@ if not edited_df.empty and takt_time_sec > 0:
             const maxCols = Math.max(topStations.length, bottomStations.length);
             const colWidth = canvas.width / (maxCols + 0.5);
 
-            // Status tiap stasiun: 'waiting', 'processing', 'done'
-            let stationStates = stations.map(() => ({{ progress: 0, status: 'waiting' }}));
+            // Menyimpan status tiap stasiun: apakah sedang memegang sepatu ('has_shoe') atau kosong ('empty')
+            let stationWorkState = stations.map(() => ({ progress: 0, hasShoe: false }));
+            // Posisi sepatu di jalur konveyor tengah
+            let conveyorShoes = [0, 2, 4]; // Indeks posisi stasiun di konveyor
 
             function drawScene() {{
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -186,7 +188,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 topStations.forEach((stn, i) => {{
                     let x = 90 + i * colWidth;
                     let y = 75;
-                    let stState = stationStates[globalIndex];
+                    let state = stationWorkState[globalIndex];
 
                     ctx.fillStyle = stn.is_bottleneck ? "#ef4444" : "#3b82f6";
                     ctx.fillRect(x - 48, y - 35, 96, 70);
@@ -204,15 +206,15 @@ if not edited_df.empty and takt_time_sec > 0:
                     // Progress Bar Kerja
                     ctx.fillStyle = "#111827";
                     ctx.fillRect(x - 40, y + 15, 80, 10);
-                    ctx.fillStyle = stState.progress >= 100 ? "#10b981" : "#f59e0b";
-                    ctx.fillRect(x - 40, y + 15, (80 * (stState.progress / 100)), 10);
+                    ctx.fillStyle = state.progress >= 100 ? "#10b981" : "#f59e0b";
+                    ctx.fillRect(x - 40, y + 15, (80 * (state.progress / 100)), 10);
 
                     ctx.fillStyle = "#1f2937";
                     ctx.font = "16px Arial";
                     ctx.fillText("👤", x, y - 45);
 
-                    // Jika sedang diproses atau selesai, tampilkan sepatu (👟) DI DALAM MEJA OPERATOR
-                    if (stState.status === 'processing' || stState.status === 'done') {{
+                    // Jika operator mengambil sepatu dari konveyor ke meja
+                    if (state.hasShoe) {{
                         ctx.fillStyle = "#10b981";
                         ctx.beginPath();
                         ctx.arc(x, y - 55, 14, 0, Math.PI * 2);
@@ -229,7 +231,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 bottomStations.forEach((stn, i) => {{
                     let x = 90 + i * colWidth;
                     let y = 375;
-                    let stState = stationStates[globalIndex];
+                    let state = stationWorkState[globalIndex];
 
                     ctx.fillStyle = stn.is_bottleneck ? "#ef4444" : "#3b82f6";
                     ctx.fillRect(x - 48, y - 35, 96, 70);
@@ -247,15 +249,14 @@ if not edited_df.empty and takt_time_sec > 0:
                     // Progress Bar Kerja
                     ctx.fillStyle = "#111827";
                     ctx.fillRect(x - 40, y + 15, 80, 10);
-                    ctx.fillStyle = stState.progress >= 100 ? "#10b981" : "#f59e0b";
-                    ctx.fillRect(x - 40, y + 15, (80 * (stState.progress / 100)), 10);
+                    ctx.fillStyle = state.progress >= 100 ? "#10b981" : "#f59e0b";
+                    ctx.fillRect(x - 40, y + 15, (80 * (state.progress / 100)), 10);
 
                     ctx.fillStyle = "#1f2937";
                     ctx.font = "16px Arial";
                     ctx.fillText("👤", x, y + 52);
 
-                    // Tampilkan sepatu di meja operator bawah
-                    if (stState.status === 'processing' || stState.status === 'done') {{
+                    if (state.hasShoe) {{
                         ctx.fillStyle = "#10b981";
                         ctx.beginPath();
                         ctx.arc(x, y + 62, 14, 0, Math.PI * 2);
@@ -268,47 +269,55 @@ if not edited_df.empty and takt_time_sec > 0:
                     globalIndex++;
                 }});
 
-                // 4. Sepatu yang sedang meluncur di Konveyor Tengah
-                let conveyorShoeX = 70 + ((globalStep * 3) % (canvas.width - 140));
-                // Tampilkan di konveyor jika tidak sedang ditarik sepenuhnya ke meja
-                ctx.fillStyle = "#10b981";
-                ctx.beginPath();
-                ctx.arc(conveyorShoeX, 230, 18, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.strokeStyle = "#047857";
-                ctx.lineWidth = 2;
-                ctx.stroke();
+                // 4. Sepatu-sepatu yang berjalan di Konveyor Tengah
+                for(let cIdx = 0; cIdx < maxCols; cIdx++) {{
+                    let cX = 90 + cIdx * colWidth;
+                    // Jika stasiun tidak sedang mengambil sepatu, tampilkan sepatu di konveyor tengah
+                    let hasOperatorTaking = stationWorkState[cIdx] && stationWorkState[cIdx].hasShoe;
+                    let hasOperatorTakingBottom = stationWorkState[cIdx + topStations.length] && stationWorkState[cIdx + topStations.length].hasShoe;
 
-                ctx.fillStyle = "#ffffff";
-                ctx.font = "13px Arial";
-                ctx.textAlign = "center";
-                ctx.fillText("👟", conveyorShoeX, 234);
+                    if (!hasOperatorTaking && !hasOperatorTakingBottom) {{
+                        ctx.fillStyle = "#10b981";
+                        ctx.beginPath();
+                        ctx.arc(cX, 230, 16, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.strokeStyle = "#047857";
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+
+                        ctx.fillStyle = "#ffffff";
+                        ctx.font = "12px Arial";
+                        ctx.textAlign = "center";
+                        ctx.fillText("👟", cX, 234);
+                    }}
+                }}
             }}
 
             function update() {{
                 if (!isRunning) return;
                 
-                timeElapsed += 0.1;
-                globalStep++;
+                timeElapsed += 0.2;
 
                 stations.forEach((stn, idx) => {{
-                    let stState = stationStates[idx];
+                    let state = stationWorkState[idx];
                     
-                    if (stState.status === 'waiting') {{
-                        stState.status = 'processing';
-                        stState.progress = 0;
-                    }} else if (stState.status === 'processing') {{
-                        let speedIncrement = (0.1 / stn.ct) * 100;
-                        stState.progress += speedIncrement;
-                        
-                        if (stState.progress >= 100) {{
-                            stState.progress = 100;
-                            stState.status = 'done';
-                            // Reset setelah sebentar untuk siklus berikutnya
+                    // Operator mengambil sepatu jika belum ada
+                    if (!state.hasShoe && state.progress === 0) {{
+                        state.hasShoe = true;
+                    }}
+
+                    // Jika sedang memegang sepatu, kerjakan sesuai cycle time
+                    if (state.hasShoe) {{
+                        let speedIncrement = (0.2 / stn.ct) * 100;
+                        state.progress += speedIncrement;
+
+                        if (state.progress >= 100) {{
+                            state.progress = 100;
+                            // Selesai dikerjakan, kembalikan ke konveyor setelah jeda singkat
                             setTimeout(() => {{
-                                stState.status = 'waiting';
-                                stState.progress = 0;
-                            }}, 400);
+                                state.hasShoe = false;
+                                state.progress = 0;
+                            }}, 300);
                         }}
                     }}
                 }});
@@ -334,8 +343,7 @@ if not edited_df.empty and takt_time_sec > 0:
             function resetSimulation() {{
                 pauseSimulation();
                 timeElapsed = 0;
-                globalStep = 0;
-                stationStates = stations.map(() => ({{ progress: 0, status: 'waiting' }}));
+                stationWorkState = stations.map(() => ({ progress: 0, hasShoe: false }));
                 timerDisplay.innerText = "⏱️ Timer: 0.0 Detik";
                 drawScene();
             }}
@@ -372,4 +380,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_video_pull")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_video_pull_step")
