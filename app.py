@@ -95,8 +95,7 @@ if not edited_df.empty and takt_time_sec > 0:
             fig.add_shape(
                 type="rect",
                 x0=-0.5, y0=0.3, x1=max(len(top_stations), len(bottom_stations)) - 0.5, y2=1.7,
-                fillcolor="#F3F4F6", line=dict(color="#374151", width=2),
-                layer="below"
+                fillcolor="#F3F4F6", line=dict(color="#374151", width=2)
             )
             
             # 2. Gambar Stasiun Sisi ATAS (Y = 2.5)
@@ -139,7 +138,6 @@ if not edited_df.empty and takt_time_sec > 0:
                     showlegend=False
                 ))
                 # Simbol Operator (Kepala 👤 di bawah meja)
-                    # Simbol Operator
                 fig.add_trace(go.Scatter(
                     x=[i], y=[-1.3],
                     mode="text",
@@ -149,7 +147,6 @@ if not edited_df.empty and takt_time_sec > 0:
                 ))
 
             # 4. Pergerakan Sepatu (👟) di Konveyor Tengah Sesuai Takt Time / Step
-            # Sepatu bergerak dari kiri ke kanan melintasi konveyor
             shoe_position = (step % max(len(top_stations), len(bottom_stations)))
             
             fig.add_trace(go.Scatter(
@@ -161,14 +158,14 @@ if not edited_df.empty and takt_time_sec > 0:
                 showlegend=False
             ))
 
-            # Layout Styling Grafik Agar Bersih Seperti Skema Desain
+            # Layout Styling Grafik
             fig.update_layout(
                 xaxis=dict(range=[-1, max(len(top_stations), len(bottom_stations))], showgrid=False, zeroline=False, showticklabels=False),
                 yaxis=dict(range=[-2.0, 4.0], showgrid=False, zeroline=False, showticklabels=False),
                 height=450,
                 margin=dict(l=20, r=20, t=20, b=20),
                 paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(240,253,244,0.5)" # Background hijau muda tipis khas area produksi
+                plot_bgcolor="rgba(240,253,244,0.5)"
             )
 
             sim_placeholder.plotly_chart(fig, use_container_width=True, key=f"conveyor_anim_{step}")
