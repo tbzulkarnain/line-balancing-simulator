@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import json
 
-st.set_page_config(page_title="Line Balancing Conveyor Simulator", layout="wide")
+st.set_page_config(page_title="Line Balancing Flow Simulator", layout="wide")
 
-st.title("🏭 Production Line Video Simulator & Line Balancing")
-st.caption("Simulasi konveyor: Sepatu berjalan di tengah, ditarik operator ke meja kerja sesuai Cycle Time, lalu dilanjutkan.")
+st.title("🏭 Production Line Flow Simulator (One-Piece Flow)")
+st.caption("Simulasi aliran produksi interaktif: Barang bergerak di konveyor, ditarik oleh operator stasiun sesuai Cycle Time masing-masing.")
 
 # --- SIDEBAR: PARAMETER OPERASIONAL ---
 st.sidebar.header("⚙️ Parameter Operasional")
@@ -17,13 +17,13 @@ st.sidebar.metric(label="⏱️ Takt Time Target", value=f"{takt_time_sec:.2f} d
 
 # --- STEP 1: INPUT DATA TABEL PROSES ---
 st.subheader("1. Data Input Proses & Cycle Time")
-st.write("Isi proses produksi. Operator akan mengambil sepatu dari konveyor, memprosesnya sesuai Cycle Time, lalu melanjutkannya.")
+st.write("Atur tahapan proses dan waktu siklus (*Cycle Time*) tiap stasiun kerja.")
 
 default_data = pd.DataFrame({
-    "Nama Proses": ["Cutting", "Stitching 1", "Stitching 2", "Assembly 1", "Assembly 2", "Outsole", "QC", "Packing"],
-    "Cycle Time Base (s)": [12.0, 22.0, 18.0, 28.0, 15.0, 20.0, 14.0, 10.0],
-    "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
-    "Actual MP": [1, 1, 1, 1, 1, 1, 1, 1]
+    "Nama Proses": ["Insert", "Stitching", "Assembly", "Outsole", "Packing"],
+    "Cycle Time Base (s)": [4.0, 6.0, 5.0, 7.0, 4.0],
+    "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0],
+    "Actual MP": [1, 1, 1, 1, 1]
 })
 
 edited_df = st.data_editor(
@@ -59,10 +59,10 @@ if not edited_df.empty and takt_time_sec > 0:
     col3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI KANVAS JAVASCRIPT ---
+    # --- STEP 2: ANIMASI KANVAS ONE-PIECE FLOW (MENIRU CONTOH VIDEO) ---
     st.markdown("---")
-    st.subheader("2. 🎬 Simulasi Konveyor & Operator")
-    st.caption("Sepatu berjalan di konveyor tengah, ditarik ke meja operator di sampingnya untuk diproses, lalu dilanjutkan.")
+    st.subheader("2. 🎬 Simulasi Visual Aliran Barang (One-Piece Flow)")
+    st.caption("Barang berjalan di konveyor, masuk ke meja operator untuk dikerjakan sesuai Cycle Time, lalu diteruskan ke stasiun berikutnya.")
 
     stations_data = []
     for idx, row in df.iterrows():
@@ -74,7 +74,6 @@ if not edited_df.empty and takt_time_sec > 0:
 
     stations_json = json.dumps(stations_data)
 
-    # Menggunakan raw string f-string dengan escape kurung kurawal ganda {{ }} untuk CSS/JS agar aman dari Python syntax error
     html_code = f"""
     <!DOCTYPE html>
     <html>
@@ -88,19 +87,19 @@ if not edited_df.empty and takt_time_sec > 0:
                 text-align: center;
             }}
             #canvas-container {{
-                background: #e6f4ea;
-                border: 2px solid #d1d5db;
-                border-radius: 10px;
+                background: #eef2f7;
+                border: 2px solid #cbd5e1;
+                border-radius: 12px;
                 padding: 15px;
                 display: inline-block;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                box-shadow: 0 4px 6px rgba(0,0,0,0.08);
                 width: 100%;
                 max-width: 1000px;
                 box-sizing: border-box;
             }}
             canvas {{
                 background: #ffffff;
-                border-radius: 6px;
+                border-radius: 8px;
                 width: 100%;
                 height: auto;
             }}
@@ -114,8 +113,8 @@ if not edited_df.empty and takt_time_sec > 0:
                 background-color: #2563eb;
                 color: white;
                 border: none;
-                padding: 12px 24px;
-                font-size: 16px;
+                padding: 10px 22px;
+                font-size: 15px;
                 border-radius: 6px;
                 cursor: pointer;
                 font-weight: bold;
@@ -134,8 +133,8 @@ if not edited_df.empty and takt_time_sec > 0:
     </head>
     <body>
         <div id="canvas-container">
-            <h3 id="timer-display" style="margin: 0 0 15px 0; color: #1f2937; font-size: 20px;">⏱️ Timer: 0.0 Detik</h3>
-            <canvas id="simCanvas" width="960" height="460"></canvas>
+            <h3 id="timer-display" style="margin: 0 0 12px 0; color: #1e293b; font-size: 18px;">⏱️ Waktu Simulasi: 0.0 Detik</h3>
+            <canvas id="simCanvas" width="960" height="420"></canvas>
             <div class="controls">
                 <button onclick="startSimulation()">▶ Play Simulasi</button>
                 <button onclick="pauseSimulation()">⏸ Pause</button>
@@ -153,169 +152,133 @@ if not edited_df.empty and takt_time_sec > 0:
             let timeElapsed = 0;
             let isRunning = false;
 
-            const mid = Math.ceil(stations.length / 2);
-            const topStations = stations.slice(0, mid);
-            const bottomStations = stations.slice(mid);
-            const maxCols = Math.max(topStations.length, bottomStations.length);
-            const colWidth = canvas.width / (maxCols + 0.5);
+            const nStations = stations.length;
+            const spacing = canvas.width / (nStations + 1);
 
-            let stationWorkState = stations.map(function() {{
-                return {{ progress: 0, hasShoe: true }};
+            // Status masing-masing stasiun: memegang barang atau kosong, dan progress pengerjaan
+            let stationState = stations.map(function() {{
+                return {{ hasItem: false, progress: 0, completed: false }};
             }});
+
+            // Antrean barang di konveyor awal masuk
+            let conveyorQueue = 3; 
+            let finishedCount = 0;
 
             function drawScene() {{
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // 1. Jalur Konveyor Tengah
-                ctx.fillStyle = "#f3f4f6";
-                ctx.strokeStyle = "#374151";
-                ctx.lineWidth = 3;
-                ctx.fillRect(40, 175, canvas.width - 80, 110);
-                ctx.strokeRect(40, 175, canvas.width - 80, 110);
+                // 1. Gambar Jalur Konveyor Tengah (Tempat barang mengalir)
+                ctx.fillStyle = "#f1f5f9";
+                ctx.strokeStyle = "#64748b";
+                ctx.lineWidth = 2;
+                ctx.fillRect(40, 165, canvas.width - 80, 70);
+                ctx.strokeRect(40, 165, canvas.width - 80, 70);
 
-                ctx.strokeStyle = "#9ca3af";
-                ctx.setLineDash([12, 12]);
+                // Garis tengah konveyor
+                ctx.strokeStyle = "#cbd5e1";
+                ctx.setLineDash([8, 8]);
                 ctx.beginPath();
-                ctx.moveTo(40, 230);
-                ctx.lineTo(canvas.width - 40, 230);
+                ctx.moveTo(40, 200);
+                ctx.lineTo(canvas.width - 40, 200);
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                let globalIndex = 0;
+                // 2. Gambar Stasiun Kerja (Meja Operator & Indikator)
+                stations.forEach(function(stn, i) {{
+                    let x = spacing * (i + 1);
+                    let yTop = 70;
+                    let state = stationState[i];
 
-                // 2. Stasiun Sisi ATAS
-                topStations.forEach(function(stn, i) {{
-                    let x = 90 + i * colWidth;
-                    let y = 75;
-                    let state = stationWorkState[globalIndex];
-
+                    // Kotak Meja Operator
                     ctx.fillStyle = stn.is_bottleneck ? "#ef4444" : "#3b82f6";
-                    ctx.fillRect(x - 48, y - 35, 96, 70);
-                    ctx.strokeStyle = "#000";
+                    ctx.fillRect(x - 45, yTop - 25, 90, 50);
+                    ctx.strokeStyle = "#0f172a";
                     ctx.lineWidth = 2;
-                    ctx.strokeRect(x - 48, y - 35, 96, 70);
+                    ctx.strokeRect(x - 45, yTop - 25, 90, 50);
 
+                    // Teks Nama Proses & CT
                     ctx.fillStyle = "#ffffff";
-                    ctx.font = "bold 12px Arial";
+                    ctx.font = "bold 11px Arial";
                     ctx.textAlign = "center";
-                    ctx.fillText(stn.name, x, y - 12);
-                    ctx.font = "11px Arial";
-                    ctx.fillText("CT: " + stn.ct.toFixed(1) + "s", x, y + 5);
+                    ctx.fillText(stn.name, x, yTop - 8);
+                    ctx.font = "10px Arial";
+                    ctx.fillText("CT: " + stn.ct.toFixed(1) + "s", x, yTop + 10);
 
-                    // Progress Bar Kerja
-                    ctx.fillStyle = "#111827";
-                    ctx.fillRect(x - 40, y + 15, 80, 10);
-                    ctx.fillStyle = state.progress >= 100 ? "#10b981" : "#f59e0b";
-                    ctx.fillRect(x - 40, y + 15, (80 * (state.progress / 100)), 10);
+                    // Ikon Operator 👤 di atas meja
+                    ctx.fillStyle = "#0f172a";
+                    ctx.font = "14px Arial";
+                    ctx.fillText("👤", x, yTop - 35);
 
-                    ctx.fillStyle = "#1f2937";
-                    ctx.font = "16px Arial";
-                    ctx.fillText("👤", x, y - 45);
-
-                    if (state.hasShoe) {{
+                    // Progress bar pengerjaan di meja operator
+                    ctx.fillStyle = "#e2e8f0";
+                    ctx.fillRect(x - 40, yTop + 32, 80, 6);
+                    if (state.hasItem) {{
                         ctx.fillStyle = "#10b981";
-                        ctx.beginPath();
-                        ctx.arc(x, y - 55, 14, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.fillStyle = "#ffffff";
-                        ctx.font = "11px Arial";
-                        ctx.fillText("👟", x, y - 51);
+                        ctx.fillRect(x - 40, yTop + 32, (80 * (state.progress / 100)), 6);
                     }}
 
-                    globalIndex++;
-                }});
-
-                // 3. Stasiun Sisi BAWAH
-                bottomStations.forEach(function(stn, i) {{
-                    let x = 90 + i * colWidth;
-                    let y = 375;
-                    let state = stationWorkState[globalIndex];
-
-                    ctx.fillStyle = stn.is_bottleneck ? "#ef4444" : "#3b82f6";
-                    ctx.fillRect(x - 48, y - 35, 96, 70);
-                    ctx.strokeStyle = "#000";
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(x - 48, y - 35, 96, 70);
-
-                    ctx.fillStyle = "#ffffff";
-                    ctx.font = "bold 12px Arial";
-                    ctx.textAlign = "center";
-                    ctx.fillText(stn.name, x, y - 12);
-                    ctx.font = "11px Arial";
-                    ctx.fillText("CT: " + stn.ct.toFixed(1) + "s", x, y + 5);
-
-                    // Progress Bar Kerja
-                    ctx.fillStyle = "#111827";
-                    ctx.fillRect(x - 40, y + 15, 80, 10);
-                    ctx.fillStyle = state.progress >= 100 ? "#10b981" : "#f59e0b";
-                    ctx.fillRect(x - 40, y + 15, (80 * (state.progress / 100)), 10);
-
-                    ctx.fillStyle = "#1f2937";
-                    ctx.font = "16px Arial";
-                    ctx.fillText("👤", x, y + 52);
-
-                    if (state.hasShoe) {{
-                        ctx.fillStyle = "#10b981";
-                        ctx.beginPath();
-                        ctx.arc(x, y + 62, 14, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.fillStyle = "#ffffff";
-                        ctx.font = "11px Arial";
-                        ctx.fillText("👟", x, y + 66);
-                    }}
-
-                    globalIndex++;
-                }});
-
-                // 4. Sepatu di Konveyor Tengah
-                for(let cIdx = 0; cIdx < maxCols; cIdx++) {{
-                    let cX = 90 + cIdx * colWidth;
-                    let topTaken = stationWorkState[cIdx] && stationWorkState[cIdx].hasShoe;
-                    let botTaken = stationWorkState[cIdx + topStations.length] && stationWorkState[cIdx + topStations.length].hasShoe;
-
-                    if (!topTaken && !botTaken) {{
-                        ctx.fillStyle = "#10b981";
-                        ctx.beginPath();
-                        ctx.arc(cX, 230, 16, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.strokeStyle = "#047857";
-                        ctx.lineWidth = 2;
-                        ctx.stroke();
-
+                    // Jika operator sedang memegang/mengerjakan barang (👟 / 📦)
+                    if (state.hasItem) {{
+                        ctx.fillStyle = "#f59e0b";
+                        ctx.fillRect(x - 12, 120, 24, 24);
+                        ctx.strokeStyle = "#b45309";
+                        ctx.strokeRect(x - 12, 120, 24, 24);
                         ctx.fillStyle = "#ffffff";
                         ctx.font = "12px Arial";
-                        ctx.textAlign = "center";
-                        ctx.fillText("👟", cX, 234);
+                        ctx.fillText("📦", x, 137);
                     }}
-                }}
+                }});
+
+                // 3. Tampilkan Barang di Titik Konveyor yang Belum Masuk / Sudah Selesai
+                ctx.fillStyle = "#475569";
+                ctx.font = "bold 12px Arial";
+                ctx.textAlign = "left";
+                ctx.fillText("Total Selesai: " + finishedCount + " Pcs", 50, 370);
             }}
 
             function update() {{
                 if (!isRunning) return;
                 
-                timeElapsed += 0.2;
+                timeElapsed += 0.1;
 
+                // Logika Aliran One-Piece Flow per Stasiun
                 stations.forEach(function(stn, idx) {{
-                    let state = stationWorkState[idx];
-                    
-                    if (state.hasShoe) {{
-                        let speedIncrement = (0.2 / stn.ct) * 100;
-                        state.progress += speedIncrement;
+                    let state = stationState[idx];
+
+                    if (!state.hasItem && !state.completed) {{
+                        // Stasiun mengambil barang dari antrean / stasiun sebelumnya
+                        if (idx === 0 || stationState[idx - 1].completed) {{
+                            state.hasItem = true;
+                            state.progress = 0;
+                            if (idx > 0) {{
+                                stationState[idx - 1].completed = false;
+                                stationState[idx - 1].hasItem = false;
+                            }}
+                        }}
+                    }} else if (state.hasItem) {{
+                        // Pengerjaan barang berdasarkan cycle time stasiun tersebut
+                        let increment = (0.1 / stn.ct) * 100;
+                        state.progress += increment;
 
                         if (state.progress >= 100) {{
                             state.progress = 100;
-                            setTimeout(function() {{
-                                state.hasShoe = false;
+                            // Jika stasiun terakhir selesai, hitung sebagai finished product
+                            if (idx === stations.length - 1) {{
+                                finishedCount++;
+                                state.hasItem = false;
                                 state.progress = 0;
+                                // Reset untuk simulasi kontinu
                                 setTimeout(function() {{
-                                    state.hasShoe = true;
-                                }}, 300);
-                            }}, 300);
+                                    stationState[0].hasItem = false;
+                                }}, 200);
+                            }} else {{
+                                state.completed = true;
+                            }}
                         }}
                     }}
                 }});
 
-                timerDisplay.innerText = "⏱️ Timer Berjalan: " + timeElapsed.toFixed(1) + " Detik";
+                timerDisplay.innerText = "⏱️ Waktu Simulasi: " + timeElapsed.toFixed(1) + " Detik";
                 
                 drawScene();
                 animationId = requestAnimationFrame(update);
@@ -336,10 +299,11 @@ if not edited_df.empty and takt_time_sec > 0:
             function resetSimulation() {{
                 pauseSimulation();
                 timeElapsed = 0;
-                stationWorkState = stations.map(function() {{
-                    return {{ progress: 0, hasShoe: true }};
+                finishedCount = 0;
+                stationState = stations.map(function() {{
+                    return {{ hasItem: false, progress: 0, completed: false }};
                 }});
-                timerDisplay.innerText = "⏱️ Timer: 0.0 Detik";
+                timerDisplay.innerText = "⏱️ Waktu Simulasi: 0.0 Detik";
                 drawScene();
             }}
 
@@ -349,7 +313,7 @@ if not edited_df.empty and takt_time_sec > 0:
     </html>
     """
 
-    st.components.v1.html(html_code, height=540, scrolling=False)
+    st.components.v1.html(html_code, height=500, scrolling=False)
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
@@ -375,4 +339,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_video_pull_fixed")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_flow")
