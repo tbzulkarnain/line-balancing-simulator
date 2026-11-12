@@ -4,8 +4,8 @@ import json
 
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
-st.title("🏭 Production Line Balancing & Parallel Operator Simulator")
-st.caption("Simulasi lini riil: Waktu proses tetap utuh per operator. Jika MP > 1, operator bekerja secara paralel membagi beban sepatu yang lewat di konveyor.")
+st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
+st.caption("Simulasi lini riil: Waktu proses utuh per operator dengan load sharing paralel, serta visualisasi antrean WIP berjejer rapi di konveyor saat terjadi bottleneck.")
 
 # --- SIDEBAR: PARAMETER OPERASIONAL ---
 st.sidebar.header("⚙️ Parameter Operasional")
@@ -17,13 +17,13 @@ st.sidebar.metric(label="⏱️ Takt Time Target", value=f"{takt_time_sec:.2f} d
 
 # --- STEP 1: INPUT DATA TABEL PROSES & ACTUAL MP ---
 st.subheader("1. Data Input Proses & Actual MP")
-st.write("Masukkan CT Base dan Allowance. Waktu pengerjaan per operator tetap utuh. Jika MP > 1, operator-operator tersebut bekerja paralel membagi sepatu.")
+st.write("Masukkan CT Base dan Allowance. Jika proses tertentu lambat atau memiliki MP sedikit, antrean sepatu akan terlihat menumpuk berjejer di konveyor.")
 
 default_data = pd.DataFrame({
     "Nama Proses": ["st collar lining", "st tip", "st counter", "hotmelt", "st margin", "punching", "insert lace"],
-    "Cycle Time Base (s)": [10.0, 75.0, 12.0, 18.0, 17.0, 15.0, 15.0],
+    "Cycle Time Base (s)": [10.0, 45.0, 12.0, 18.0, 17.0, 15.0, 15.0],
     "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
-    "Actual MP": [1, 4, 1, 1, 1, 2, 1]  # st tip diberi 4 MP paralel
+    "Actual MP": [1, 2, 1, 1, 1, 1, 1]  # st tip diset 2 MP agar terlihat pembagian kerjanya
 })
 
 edited_df = st.data_editor(
@@ -41,8 +41,6 @@ edited_df = st.data_editor(
 if not edited_df.empty and takt_time_sec > 0:
     df = edited_df.copy()
     df["Standard Time (s)"] = df["Cycle Time Base (s)"] * (1 + df["Allowance (%)"] / 100)
-    
-    # Effective CT untuk perhitungan Yamazumi / Bottleneck
     df["Effective CT (s)"] = df["Standard Time (s)"] / df["Actual MP"]
     
     max_ct = df["Effective CT (s)"].max()
@@ -61,10 +59,10 @@ if not edited_df.empty and takt_time_sec > 0:
     col3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI KANVAS LAYOUT & PARALLEL OPERATOR ---
+    # --- STEP 2: ANIMASI KANVAS DENGAN ANTREAN WIP BERJEJER & PARALLEL LOAD SHARING ---
     st.markdown("---")
-    st.subheader("2. 🎬 Simulasi Lini Produksi (Parallel Load Sharing)")
-    st.caption("Operator dengan proses yang sama (misal st tip 1 s.d 4) bekerja paralel membagi sepatu yang lewat di konveyor.")
+    st.subheader("2. 🎬 Simulasi Lini Produksi & Visualisasi Bottleneck")
+    st.caption("Sepatu yang menumpuk akibat antrean proses akan berjejer rapi di konveyor depan stasiun tanpa saling menimpa.")
 
     line_stations = []
     global_station_index = 0
@@ -73,6 +71,7 @@ if not edited_df.empty and takt_time_sec > 0:
         p_name = row["Nama Proses"]
         mp_count = int(row["Actual MP"])
         std_time = float(row["Standard Time (s)"])
+        eff_ct = float(row["Effective CT (s)"])
         is_bn = (p_name == bottleneck_process)
 
         sub_stations = []
@@ -80,11 +79,12 @@ if not edited_df.empty and takt_time_sec > 0:
             sub_stations.append({
                 "station_id": global_station_index,
                 "process_name": p_name,
-                "display_name": f"{p_name} ({m+1})",
+                "display_name": f"{p_name} ({m+1})" if mp_count > 1 else p_name,
                 "std_time": std_time,
+                "eff_ct": eff_ct,
                 "is_bottleneck": is_bn
             })
-            global_station_index += 1  # DIPERBAIKI DI SINI
+            global_station_index += 1
         
         line_stations.append({
             "process_name": p_name,
@@ -262,7 +262,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     ctx.font = "10px Arial";
                     ctx.fillStyle = "#374151";
                     ctx.fillText("CT: " + stn.std_time.toFixed(1) + "s", x, labelY + (isTop ? 13 : -13));
-                    ctx.fillText("(" + (i+1) + ")", x, labelY + (isTop ? 26 : -26));
+                    ctx.fillText(stn.display_name, x, labelY + (isTop ? 26 : -26));
 
                     ctx.fillStyle = stn.is_bottleneck ? "#dc2626" : "#3b66b8";
                     ctx.fillRect(x - 28, tableY - 28, 56, 56);
@@ -282,6 +282,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     ctx.arc(opX, tableY, 14, Math.PI * 0.72, Math.PI * 1.28);
                     ctx.stroke();
 
+                    // Hitung WIP tertahan di stasiun ini (yang antre di konveyor)
                     let waitingCount = products.filter(p => p.currentStationIdx === i && p.status === 'queued').length;
                     let workingCount = products.filter(p => p.currentStationIdx === i && p.status === 'working').length;
                     let totalHold = waitingCount + workingCount;
@@ -297,7 +298,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     }}
                 }});
 
-                // 3. Gambar Produk (👟)
+                // 3. Gambar Produk (👟) — Berjejer mundur di konveyor tanpa saling menimpa!
                 products.forEach(function(prod) {{
                     if (prod.status === 'conveyor' || prod.status === 'queued') {{
                         ctx.fillStyle = prod.status === 'queued' ? "#fee2e2" : "#ffffff";
@@ -367,10 +368,13 @@ if not edited_df.empty and takt_time_sec > 0:
 
                 let uniqueProcesses = [...new Set(stations.map(s => s.process_name))];
 
-                products.forEach(function(prod) {{
-                    if (prod.status === 'conveyor') {{
+                // Update posisi setiap produk dengan sistem antrean berjejer mundur di konveyor
+                products.forEach(function(prod, idx) {{
+                    if (prod.status === 'conveyor' || prod.status === 'queued') {{
                         let targetProcName = uniqueProcesses[prod.currentProcessStep];
-                        let candidateStations = stations.map((s, idx) => Object.assign({{}}, s, {{ idx: idx }})).filter(s => s.process_name === targetProcName);
+                        let candidateStations = stations.map((s, i) => Object.assign({{}}, s, {{ idx: i }})).filter(s => s.process_name === targetProcName);
+                        
+                        // Cari operator paralel yang meja kerjanya kosong
                         let availableStation = candidateStations.find(cs => !products.some(p => p.currentStationIdx === cs.idx && p.status === 'working'));
 
                         if (availableStation) {{
@@ -384,32 +388,38 @@ if not edited_df.empty and takt_time_sec > 0:
                             }} else {{
                                 prod.x += 100 * adjustedDelta;
                                 if (prod.x > targetPos.x) prod.x = targetPos.x;
+                                prod.status = 'conveyor';
                             }}
                         }} else {{
+                            // Jika semua operator di proses ini sibuk, produk antre dan berjejer rapi mundur di konveyor
                             let firstStationOfProc = candidateStations[0];
                             let targetPos = getStationCoords(firstStationOfProc.idx);
                             
-                            if (prod.x < targetPos.x) {{
+                            // Hitung berapa produk lain yang sudah antre di depan produk ini pada proses yang sama
+                            let aheadCount = 0;
+                            for (let j = 0; j < idx; j++) {{
+                                if (products[j].currentProcessStep === prod.currentProcessStep && (products[j].status === 'queued' || products[j].status === 'conveyor')) {{
+                                    aheadCount++;
+                                }}
+                            }}
+
+                            let stopX = targetPos.x - (aheadCount * 32) - 40;
+                            if (stopX < 45) stopX = 45;
+
+                            if (prod.x < stopX) {{
                                 prod.x += 100 * adjustedDelta;
-                                if (prod.x >= targetPos.x) {{
-                                    prod.x = targetPos.x;
+                                if (prod.x >= stopX) {{
+                                    prod.x = stopX;
                                     prod.status = 'queued';
                                     prod.currentStationIdx = firstStationOfProc.idx;
+                                }} else {{
+                                    prod.status = 'conveyor';
                                 }}
                             }} else {{
+                                prod.x = stopX;
                                 prod.status = 'queued';
                                 prod.currentStationIdx = firstStationOfProc.idx;
                             }}
-                        }}
-                    }} else if (prod.status === 'queued') {{
-                        let targetProcName = uniqueProcesses[prod.currentProcessStep];
-                        let candidateStations = stations.map((s, idx) => Object.assign({{}}, s, {{ idx: idx }})).filter(s => s.process_name === targetProcName);
-                        let availableStation = candidateStations.find(cs => !products.some(p => p.currentStationIdx === cs.idx && p.status === 'working'));
-
-                        if (availableStation) {{
-                            prod.currentStationIdx = availableStation.idx;
-                            prod.status = 'working';
-                            prod.workElapsed = 0;
                         }}
                     }} else if (prod.status === 'working') {{
                         let stn = stations[prod.currentStationIdx];
@@ -421,6 +431,8 @@ if not edited_df.empty and takt_time_sec > 0:
                                 finishedCount++;
                                 prod.status = 'finished';
                             }} else {{
+                                let currentPos = getStationCoords(prod.currentStationIdx);
+                                prod.x = currentPos.x;
                                 prod.status = 'conveyor';
                                 prod.workElapsed = 0;
                             }}
@@ -493,4 +505,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_parallel_load")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_wip_queue")
