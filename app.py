@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import json
 
-st.set_page_config(page_title="Line Balancing Conveyor & WIP Simulator", layout="wide")
+st.set_page_config(page_title="Line Balancing One-Piece Flow Simulator", layout="wide")
 
-st.title("🏭 Real-Time Production Line Conveyor & WIP Bottleneck Simulator")
-st.caption("Simulasi nyata: Aliran konveyor tengah, operator berhadapan di kanan-kiri, penumpukan WIP akibat Bottleneck, dan kontrol kecepatan.")
+st.title("🏭 Production Line One-Piece Flow Simulator")
+st.caption("Simulasi lini produksi: Konveyor tengah berjalan per ketukan Takt Time, meja operator berhadap-hadapan di atas & bawah, tanpa penumpukan WIP.")
 
 # --- SIDEBAR: PARAMETER OPERASIONAL ---
 st.sidebar.header("⚙️ Parameter Operasional")
@@ -16,14 +16,14 @@ takt_time_sec = (available_time_min * 60) / target_demand if target_demand > 0 e
 st.sidebar.metric(label="⏱️ Takt Time Target", value=f"{takt_time_sec:.2f} det/pcs")
 
 # --- STEP 1: INPUT DATA TABEL PROSES & ACTUAL MP ---
-st.subheader("1. Data Input Proses & Alokasi Actual MP")
-st.write("Ubah jumlah Actual MP di tabel bawah untuk melihat bagaimana penyesuaian tenaga kerja memengaruhi Bottleneck dan Balancing Rate.")
+st.subheader("1. Data Input Proses & Total Manpower (MP)")
+st.write("Isi proses dan jumlah MP per stasiun. Total MP menentukan jumlah stasiun aktif yang digambar pada layout berhadapan.")
 
 default_data = pd.DataFrame({
     "Nama Proses": ["Cutting", "Stitching 1", "Stitching 2", "Assembly", "Outsole", "Packing"],
-    "Cycle Time Base (s)": [6.0, 18.0, 15.0, 12.0, 10.0, 5.0],
+    "Cycle Time Base (s)": [4.0, 12.0, 10.0, 8.0, 6.0, 4.0],
     "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
-    "Actual MP": [1, 3, 2, 2, 2, 1]  # Stitching diberi MP lebih banyak karena CT tinggi
+    "Actual MP": [1, 2, 2, 1, 1, 1]
 })
 
 edited_df = st.data_editor(
@@ -55,25 +55,29 @@ if not edited_df.empty and takt_time_sec > 0:
     st.markdown("---")
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("🎯 Balancing Rate", f"{balancing_rate:.2f}%")
-    col2.metric("🚨 Bottleneck", f"{bottleneck_process}", delta=f"{max_ct:.1f} s/pcs", delta_color="inverse")
+    col2.metric("🚨 Bottleneck", f"{bottleneck_process}", delta=f"{max_ct:.1f} s", delta_color="inverse")
     col3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI KANVAS KONVEYOR TENGAH & WIP BUFFER ---
+    # --- STEP 2: ANIMASI LAYOUT BERHADAPAN (ONE-PIECE FLOW) ---
     st.markdown("---")
-    st.subheader("2. 🎬 Simulasi Layout Konveyor Riil, MP, & Penumpukan WIP (Bottleneck)")
-    st.caption("Rel konveyor di tengah mengalirkan produk. Operator di atas dan bawah mengambil produk sesuai kapasitas MP & Cycle Time. Perhatikan penumpukan produk (WIP) di stasiun Bottleneck.")
+    st.subheader("2. 🎬 Simulasi Layout Konveyor Tengah & Operator Berhadapan")
+    st.caption("Produk bergerak satu per satu di konveyor tengah sesuai takt time. Operator di atas dan bawah mengerjakan proses secara sinkron tanpa WIP.")
 
-    stations_data = []
+    # Memperluas daftar stasiun berdasarkan Actual MP masing-masing proses agar terpetak di layout
+    layout_stations = []
     for idx, row in df.iterrows():
-        stations_data.append({
-            "name": row["Nama Proses"],
-            "ct": float(row["Effective CT (s)"]),
-            "mp": int(row["Actual MP"]),
-            "is_bottleneck": (row["Nama Proses"] == bottleneck_process)
-        })
+        mp_count = int(row["Actual MP"])
+        for m in range(mp_count):
+            layout_stations.append({
+                "name": row["Nama Proses"] + (f" ({m+1})" if mp_count > 1 else ""),
+                "base_name": row["Nama Proses"],
+                "ct": float(row["Effective CT (s)"]),
+                "is_bottleneck": (row["Nama Proses"] == bottleneck_process)
+            })
 
-    stations_json = json.dumps(stations_data)
+    stations_json = json.dumps(layout_stations)
+    takt_val = float(takt_time_sec)
 
     html_code = f"""
     <!DOCTYPE html>
@@ -82,24 +86,24 @@ if not edited_df.empty and takt_time_sec > 0:
         <style>
             body {{
                 font-family: Arial, sans-serif;
-                background-color: #f8fafc;
+                background-color: #e8f5e9;
                 margin: 0;
                 padding: 10px;
                 text-align: center;
             }}
             #canvas-container {{
-                background: #f1f5f9;
-                border: 2px solid #cbd5e1;
+                background: #ffffff;
+                border: 2px solid #a5d6a7;
                 border-radius: 12px;
                 padding: 15px;
                 display: inline-block;
                 box-shadow: 0 4px 6px rgba(0,0,0,0.08);
                 width: 100%;
-                max-width: 1050px;
+                max-width: 1100px;
                 box-sizing: border-box;
             }}
             canvas {{
-                background: #ffffff;
+                background: #f1f8e9;
                 border-radius: 8px;
                 width: 100%;
                 height: auto;
@@ -117,7 +121,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 gap: 10px;
             }}
             button {{
-                background-color: #2563eb;
+                background-color: #2e7d32;
                 color: white;
                 border: none;
                 padding: 10px 18px;
@@ -128,24 +132,24 @@ if not edited_df.empty and takt_time_sec > 0:
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }}
             button:hover {{
-                background-color: #1d4ed8;
+                background-color: #1b5e20;
             }}
             button.reset {{
-                background-color: #dc2626;
+                background-color: #c62828;
             }}
             button.reset:hover {{
-                background-color: #b91c1c;
+                background-color: #b71c1c;
             }}
             .speed-selector {{
                 font-size: 14px;
                 font-weight: bold;
-                color: #1e293b;
+                color: #1b5e20;
             }}
             select {{
                 padding: 6px 12px;
                 font-size: 14px;
                 border-radius: 6px;
-                border: 1px solid #cbd5e1;
+                border: 1px solid #a5d6a7;
                 background-color: white;
                 cursor: pointer;
             }}
@@ -153,8 +157,8 @@ if not edited_df.empty and takt_time_sec > 0:
     </head>
     <body>
         <div id="canvas-container">
-            <h3 id="timer-display" style="margin: 0 0 10px 0; color: #1e293b; font-size: 18px;">⏱️ Waktu Aktual: 0.0 Detik</h3>
-            <canvas id="simCanvas" width="1000" height="480"></canvas>
+            <h3 id="timer-display" style="margin: 0 0 10px 0; color: #1b5e20; font-size: 18px;">⏱️ Waktu Aktual: 0.0 Detik | Takt Time: {takt_val:.1f}s</h3>
+            <canvas id="simCanvas" width="1050" height="460"></canvas>
             <div class="panel">
                 <div class="controls">
                     <button onclick="startSimulation()">▶ Play</button>
@@ -175,6 +179,7 @@ if not edited_df.empty and takt_time_sec > 0:
 
         <script>
             const stations = {stations_json};
+            const taktTime = {takt_val};
             const canvas = document.getElementById("simCanvas");
             const ctx = canvas.getContext("2d");
             const timerDisplay = document.getElementById("timer-display");
@@ -188,14 +193,14 @@ if not edited_df.empty and takt_time_sec > 0:
             const nStations = stations.length;
             const spacing = canvas.width / (nStations + 1);
 
-            // Status stasiun: wipBuffer (jumlah antrean produk menumpuk di konveyor stasiun tersebut)
-            let stationState = stations.map(function(stn) {{
-                return {{ wipBuffer: 0, elapsedWork: 0, isWorking: false }};
+            // One-Piece Flow: Setiap stasiun memegang tepat 1 produk (atau kosong)
+            let stationState = stations.map(function() {{
+                return {{ hasProduct: false, progress: 0 }};
             }});
 
             let finishedCount = 0;
             let lastTimestamp = null;
-            let spawnTimer = 0;
+            let taktCounter = 0;
 
             function changeSpeed() {{
                 speedMultiplier = parseFloat(speedSelect.value);
@@ -204,87 +209,82 @@ if not edited_df.empty and takt_time_sec > 0:
             function drawScene() {{
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // 1. Gambar Rel Konveyor Utama di Tengah (Memanjang)
-                ctx.fillStyle = "#e2e8f0";
-                ctx.strokeStyle = "#475569";
+                // 1. Konveyor Tengah Memanjang (Menyerupai referensi gambar)
+                ctx.fillStyle = "#ffffff";
+                ctx.strokeStyle = "#374151";
                 ctx.lineWidth = 3;
-                ctx.fillRect(40, 210, canvas.width - 80, 70);
-                ctx.strokeRect(40, 210, canvas.width - 80, 70);
+                ctx.fillRect(40, 195, canvas.width - 80, 70);
+                ctx.strokeRect(40, 195, canvas.width - 80, 70);
 
-                // Rel Rol Konveyor Tengah (garis putus-putus)
-                ctx.strokeStyle = "#94a3b8";
+                // Garis tengah konveyor
+                ctx.strokeStyle = "#9ca3af";
                 ctx.setLineDash([10, 10]);
                 ctx.beginPath();
-                ctx.moveTo(40, 245);
-                ctx.lineTo(canvas.width - 40, 245);
+                ctx.moveTo(40, 230);
+                ctx.lineTo(canvas.width - 40, 230);
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // 2. Gambar Stasiun Kerja (Operator Atas & Bawah berhadapan dengan rel tengah)
+                // 2. Gambar Stasiun Sisi Atas dan Bawah Berhadapan
                 stations.forEach(function(stn, i) {{
                     let x = spacing * (i + 1);
-                    let state = stationState[i];
+                    let isTop = (i % 2 === 0); // Selang-seling atas dan bawah seperti gambar referensi
+                    let tableY = isTop ? 85 : 375;
+                    let operatorY = isTop ? 28 : 432;
 
-                    // Posisi Meja & Operator ATAS (Genap) atau BAWAH (Ganjil) disebar berhadap-hadapan
-                    let isTop = (i % 2 === 0);
-                    let tableY = isTop ? 80 : 360;
-                    let operatorY = isTop ? 30 : 430;
-
-                    // Kotak Meja Kerja Operator
+                    // Kotak Meja Stasiun (Biru seperti gambar referensi)
                     ctx.fillStyle = stn.is_bottleneck ? "#ef4444" : "#3b82f6";
-                    ctx.fillRect(x - 50, tableY - 25, 100, 50);
-                    ctx.strokeStyle = "#0f172a";
+                    ctx.fillRect(x - 45, tableY - 25, 90, 50);
+                    ctx.strokeStyle = "#1f2937";
                     ctx.lineWidth = 2;
-                    ctx.strokeRect(x - 50, tableY - 25, 100, 50);
+                    ctx.strokeRect(x - 45, tableY - 25, 90, 50);
 
-                    // Teks Informasi Stasiun & MP
+                    // Teks Nama Proses & CT
                     ctx.fillStyle = "#ffffff";
-                    ctx.font = "bold 11px Arial";
+                    ctx.font = "bold 10px Arial";
                     ctx.textAlign = "center";
                     ctx.fillText(stn.name, x, tableY - 8);
                     ctx.font = "10px Arial";
-                    ctx.fillText("MP: " + stn.mp + " | CT: " + stn.ct.toFixed(1) + "s", x, tableY + 10);
+                    ctx.fillText("CT: " + stn.ct.toFixed(1) + "s", x, tableY + 10);
 
-                    // Ikon Manpower (👤 x MP)
-                    ctx.fillStyle = "#0f172a";
-                    ctx.font = "14px Arial";
-                    let mpIcons = "";
-                    for(let m=0; m < Math.min(stn.mp, 3); m++) mpIcons += "👤";
-                    if(stn.mp > 3) mpIcons += "+";
-                    ctx.fillText(mpIcons, x, operatorY);
+                    // Ikon Kursi & Operator (C) dan (●) persis gaya gambar referensi
+                    ctx.fillStyle = "#1f2937";
+                    ctx.font = "bold 14px Arial";
+                    let operatorSymbol = isTop ? " (● " : " (● ";
+                    ctx.fillText("👤 " + stn.base_name, x, operatorY);
 
-                    // Progress bar pengerjaan stasiun
-                    let progressPercent = Math.min(100, (state.elapsedWork / stn.ct) * 100);
-                    ctx.fillStyle = "#cbd5e1";
-                    ctx.fillRect(x - 45, tableY + 32, 90, 6);
-                    if (state.isWorking) {{
+                    // Progress Bar Pengerjaan Stasiun
+                    let state = stationState[i];
+                    let progPercent = Math.min(100, (state.progress / stn.ct) * 100);
+                    ctx.fillStyle = "#d1d5db";
+                    ctx.fillRect(x - 40, tableY + 30, 80, 5);
+                    if (state.hasProduct) {{
                         ctx.fillStyle = "#10b981";
-                        ctx.fillRect(x - 45, tableY + 32, (90 * (progressPercent / 100)), 6);
+                        ctx.fillRect(x - 40, tableY + 30, (80 * (progPercent / 100)), 5);
                     }}
 
-                    // 3. Visualisasi Penumpukan WIP (Bottleneck Buffer) di Konveyor Depan Stasiun
-                    if (state.wipBuffer > 0) {{
-                        ctx.fillStyle = "#f59e0b";
-                        let bufferDisplay = Math.min(state.wipBuffer, 5); // Maksimal visual 5 kotak
-                        for(let b = 0; b < bufferDisplay; b++) {{
-                            let bx = isTop ? (x - 20 + (b * 8)) : (x - 20 - (b * 8));
-                            let by = 245;
-                            ctx.fillRect(bx - 6, by - 6, 12, 12);
-                            ctx.strokeStyle = "#78350f";
-                            ctx.strokeRect(bx - 6, by - 6, 12, 12);
-                        }}
-                        // Angka jumlah tumpukan WIP
-                        ctx.fillStyle = "#b91c1c";
-                        ctx.font = "bold 11px Arial";
-                        ctx.fillText("WIP: " + state.wipBuffer, x, isTop ? 170 : 315);
+                    // 3. Gambar Sepatu (👟) di Konveyor Sesuai Posisi Stasiun (One-Piece Flow Murni)
+                    if (state.hasProduct) {{
+                        ctx.fillStyle = "#10b981";
+                        ctx.beginPath();
+                        ctx.arc(x, 230, 15, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.strokeStyle = "#047857";
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+
+                        ctx.fillStyle = "#ffffff";
+                        ctx.font = "12px Arial";
+                        ctx.textAlign = "center";
+                        ctx.fillText("👟", x, 234);
                     }}
                 }});
 
-                // Info Output Produk Selesai di Ujung Konveyor
-                ctx.fillStyle = "#0f172a";
+                // Info Total Output Selesai
+                ctx.fillStyle = "#1b5e20";
                 ctx.font = "bold 13px Arial";
                 ctx.textAlign = "left";
-                ctx.fillText("📦 Total Output Selesai: " + finishedCount + " Pcs", 50, 470);
+                ctx.fillText("📦 Total Sepatu Selesai: " + finishedCount + " Pcs", 50, 445);
             }}
 
             function update(timestamp) {{
@@ -296,44 +296,47 @@ if not edited_df.empty and takt_time_sec > 0:
 
                 let adjustedDelta = deltaTime * speedMultiplier;
                 timeElapsed += adjustedDelta;
-                spawnTimer += adjustedDelta;
+                taktCounter += adjustedDelta;
 
-                // Masuknya material baru ke stasiun pertama setiap 2 detik (atau sesuai takt time)
-                if (spawnTimer >= 2.0) {{
-                    spawnTimer = 0;
-                    stationState[0].wipBuffer++;
+                // Logika One-Piece Flow: Produk masuk setiap kali durasi Takt Time tercapai
+                if (taktCounter >= taktTime) {{
+                    taktCounter = 0;
+                    // Masukkan produk baru ke stasiun pertama jika kosong
+                    if (!stationState[0].hasProduct) {{
+                        stationState[0].hasProduct = true;
+                        stationState[0].progress = 0;
+                    }}
                 }}
 
-                // Simulasi Aliran WIP antar Stasiun Berdasarkan Kapasitas CT & MP
-                stations.forEach(function(stn, idx) {{
-                    let state = stationState[idx];
+                // Proses pengerjaan setiap stasiun secara simultan (One-Piece Flow estafet)
+                for (let i = stations.length - 1; i >= 0; i--) {{
+                    let state = stationState[i];
+                    let stn = stations[i];
 
-                    // Jika stasiun sedang tidak bekerja tapi ada WIP di buffernya, ambil untuk dikerjakan
-                    if (!state.isWorking && state.wipBuffer > 0) {{
-                        state.isWorking = true;
-                        state.elapsedWork = 0;
-                        state.wipBuffer--; // Ambil 1 dari antrean konveyor
-                    }}
+                    if (state.hasProduct) {{
+                        state.progress += adjustedDelta;
 
-                    // Jika sedang bekerja, hitung waktu pengerjaan sesuai Effective CT
-                    if (state.isWorking) {{
-                        state.elapsedWork += adjustedDelta;
-
-                        if (state.elapsedWork >= stn.ct) {{
-                            state.isWorking = false;
-                            state.elapsedWork = 0;
-
-                            // Teruskan ke stasiun berikutnya, atau jika stasiun terakhir hitung selesai
-                            if (idx === stations.length - 1) {{
+                        // Jika selesai dikerjakan sesuai Cycle Time stasiun ini
+                        if (state.progress >= stn.ct) {{
+                            if (i === stations.length - 1) {{
+                                // Jika di stasiun terakhir, produk selesai keluar lini
                                 finishedCount++;
+                                state.hasProduct = false;
+                                state.progress = 0;
                             }} else {{
-                                stationState[idx + 1].wipBuffer++;
+                                // Estafet ke stasiun berikutnya jika stasiun sebelah depan sedang kosong (Zero WIP)
+                                if (!stationState[i + 1].hasProduct) {{
+                                    stationState[i + 1].hasProduct = true;
+                                    stationState[i + 1].progress = 0;
+                                    state.hasProduct = false;
+                                    state.progress = 0;
+                                }}
                             }}
                         }}
                     }}
-                }});
+                }}
 
-                timerDisplay.innerText = "⏱️ Waktu Aktual: " + timeElapsed.toFixed(1) + " Detik (Kecepatan: " + speedMultiplier + "x)";
+                timerDisplay.innerText = "⏱️ Waktu Aktual: " + timeElapsed.toFixed(1) + " Detik | Takt Time: " + taktTime.toFixed(1) + "s (Kecepatan: " + speedMultiplier + "x)";
                 
                 drawScene();
                 animationId = requestAnimationFrame(update);
@@ -357,12 +360,12 @@ if not edited_df.empty and takt_time_sec > 0:
                 pauseSimulation();
                 timeElapsed = 0;
                 finishedCount = 0;
-                spawnTimer = 0;
+                taktCounter = 0;
                 lastTimestamp = null;
                 stationState = stations.map(function() {{
-                    return {{ wipBuffer: 0, elapsedWork: 0, isWorking: false }};
+                    return {{ hasProduct: false, progress: 0 }};
                 }});
-                timerDisplay.innerText = "⏱️ Waktu Aktual: 0.0 Detik";
+                timerDisplay.innerText = "⏱️ Waktu Aktual: 0.0 Detik | Takt Time: " + taktTime.toFixed(1) + "s";
                 drawScene();
             }}
 
@@ -372,11 +375,11 @@ if not edited_df.empty and takt_time_sec > 0:
     </html>
     """
 
-    st.components.v1.html(html_code, height=540, scrolling=False)
+    st.components.v1.html(html_code, height=520, scrolling=False)
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
-    st.subheader("3. Yamazumi Chart (Analisis Efisiensi & Kapasitas MP)")
+    st.subheader("3. Yamazumi Chart (Analisis Cycle Time vs Takt Time)")
     
     import plotly.graph_objects as go
     fig_bar = go.Figure()
@@ -398,4 +401,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_mp_wip")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_one_piece")
