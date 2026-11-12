@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import json
 
-st.set_page_config(page_title="Line Balancing One-Piece Flow Simulator", layout="wide")
+st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
-st.title("🏭 Production Line One-Piece Flow Simulator (Pick, Work & Release)")
-st.caption("Simulasi riil: Produk di konveyor ditarik ke meja operator, dikerjakan sesuai Cycle Time, lalu dikembalikan ke konveyor.")
+st.title("🏭 Production Line One-Piece Flow Simulator")
+st.caption("Simulasi konveyor riil: Produk berjalan di konveyor tengah, ditarik operator berhadapan (atas-bawah), dikerjakan sesuai Effective CT (Standard Time / MP), lalu dilanjutkan.")
 
 # --- SIDEBAR: PARAMETER OPERASIONAL ---
 st.sidebar.header("⚙️ Parameter Operasional")
@@ -16,14 +16,14 @@ takt_time_sec = (available_time_min * 60) / target_demand if target_demand > 0 e
 st.sidebar.metric(label="⏱️ Takt Time Target", value=f"{takt_time_sec:.2f} det/pcs")
 
 # --- STEP 1: INPUT DATA TABEL PROSES & ACTUAL MP ---
-st.subheader("1. Data Input Proses & Total Manpower (MP)")
-st.write("Isi proses dan jumlah MP per stasiun. Total MP menentukan jumlah stasiun aktif yang digambar pada layout berhadapan.")
+st.subheader("1. Data Input Proses & Actual MP")
+st.write("Isi proses, CT Base, Allowance, dan Actual MP. Effective CT adalah waktu siklus per unit setelah dibagi jumlah MP.")
 
 default_data = pd.DataFrame({
-    "Nama Proses": ["Cutting", "Stitching 1", "Stitching 2", "Assembly", "Outsole", "Packing"],
-    "Cycle Time Base (s)": [4.0, 10.0, 8.0, 7.0, 5.0, 3.0],
-    "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
-    "Actual MP": [1, 2, 2, 1, 1, 1]
+    "Nama Proses": ["Cutting", "Stitching", "Assembly", "Outsole", "Packing"],
+    "Cycle Time Base (s)": [10.0, 20.0, 15.0, 12.0, 8.0],
+    "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0],
+    "Actual MP": [1, 2, 1, 1, 1]  # Stitching 20s dengan 2 MP menjadi Effective CT 11s
 })
 
 edited_df = st.data_editor(
@@ -59,23 +59,30 @@ if not edited_df.empty and takt_time_sec > 0:
     col3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI LAYOUT BERHADAPAN (AMBIL DARI CVY -> MEJA -> KEMBALI KE CVY) ---
+    # --- STEP 2: ANIMASI KANVAS LAYOUT BERHADAPAN & KONVEYOR BERGERAK ---
     st.markdown("---")
-    st.subheader("2. 🎬 Simulasi Interaksi Konveyor & Meja Operator")
-    st.caption("Produk berjalan di konveyor, diambil operator ke meja untuk diproses sesuai Cycle Time, lalu dikembalikan ke konveyor.")
+    st.subheader("2. 🎬 Simulasi Layout Berhadapan & Konveyor Berjalan")
+    st.caption("Meja operator berpasangan di sisi atas dan bawah konveyor tengah. Produk berjalan di konveyor, ditarik ke meja saat tiba di stasiun, dikerjakan, lalu dikembalikan ke konveyor.")
 
-    layout_stations = []
+    # Membuat daftar stasiun beserta nomor sub-operatornya jika MP > 1
+    stations_list = []
     for idx, row in df.iterrows():
         mp_count = int(row["Actual MP"])
+        std_time = row["Standard Time (s)"]
+        eff_ct = row["Effective CT (s)"]
+        is_bn = (row["Nama Proses"] == bottleneck_process)
+        
         for m in range(mp_count):
-            layout_stations.append({
-                "name": row["Nama Proses"] + (f" ({m+1})" if mp_count > 1 else ""),
-                "base_name": row["Nama Proses"],
-                "ct": float(row["Effective CT (s)"]),
-                "is_bottleneck": (row["Nama Proses"] == bottleneck_process)
+            stations_list.append({
+                "process_name": row["Nama Proses"],
+                "display_name": row["Nama Proses"] + (f" ({m+1})" if mp_count > 1 else ""),
+                "std_time": float(std_time),
+                "eff_ct": float(eff_ct),
+                "mp": mp_count,
+                "is_bottleneck": is_bn
             })
 
-    stations_json = json.dumps(layout_stations)
+    stations_json = json.dumps(stations_list)
     takt_val = float(takt_time_sec)
 
     html_code = f"""
@@ -85,14 +92,14 @@ if not edited_df.empty and takt_time_sec > 0:
         <style>
             body {{
                 font-family: Arial, sans-serif;
-                background-color: #e8f5e9;
+                background-color: #eef2f7;
                 margin: 0;
                 padding: 10px;
                 text-align: center;
             }}
             #canvas-container {{
                 background: #ffffff;
-                border: 2px solid #a5d6a7;
+                border: 2px solid #cbd5e1;
                 border-radius: 12px;
                 padding: 15px;
                 display: inline-block;
@@ -102,7 +109,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 box-sizing: border-box;
             }}
             canvas {{
-                background: #f1f8e9;
+                background: #f8fafc;
                 border-radius: 8px;
                 width: 100%;
                 height: auto;
@@ -120,7 +127,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 gap: 10px;
             }}
             button {{
-                background-color: #2e7d32;
+                background-color: #2563eb;
                 color: white;
                 border: none;
                 padding: 10px 18px;
@@ -131,24 +138,24 @@ if not edited_df.empty and takt_time_sec > 0:
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }}
             button:hover {{
-                background-color: #1b5e20;
+                background-color: #1d4ed8;
             }}
             button.reset {{
-                background-color: #c62828;
+                background-color: #dc2626;
             }}
             button.reset:hover {{
-                background-color: #b71c1c;
+                background-color: #b91c1c;
             }}
             .speed-selector {{
                 font-size: 14px;
                 font-weight: bold;
-                color: #1b5e20;
+                color: #1e293b;
             }}
             select {{
                 padding: 6px 12px;
                 font-size: 14px;
                 border-radius: 6px;
-                border: 1px solid #a5d6a7;
+                border: 1px solid #cbd5e1;
                 background-color: white;
                 cursor: pointer;
             }}
@@ -156,7 +163,7 @@ if not edited_df.empty and takt_time_sec > 0:
     </head>
     <body>
         <div id="canvas-container">
-            <h3 id="timer-display" style="margin: 0 0 10px 0; color: #1b5e20; font-size: 18px;">⏱️ Waktu Aktual: 0.0 Detik | Takt Time: {takt_val:.1f}s</h3>
+            <h3 id="timer-display" style="margin: 0 0 10px 0; color: #1e293b; font-size: 18px;">⏱️ Waktu Aktual: 0.0 Detik | Takt Time: {takt_val:.1f}s</h3>
             <canvas id="simCanvas" width="1050" height="480"></canvas>
             <div class="panel">
                 <div class="controls">
@@ -169,7 +176,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     <select id="speedSelect" onchange="changeSpeed()">
                         <option value="1">1x (Normal)</option>
                         <option value="2">2x</option>
-                        <option value="5">5x</option>
+                        <option value="5" selected>5x</option>
                         <option value="10">10x</option>
                     </select>
                 </div>
@@ -187,19 +194,17 @@ if not edited_df.empty and takt_time_sec > 0:
             let animationId = null;
             let timeElapsed = 0;
             let isRunning = false;
-            let speedMultiplier = 1;
+            let speedMultiplier = 5;
 
             const nStations = stations.length;
             const spacing = canvas.width / (nStations + 1);
 
-            // Status tiap stasiun: 'on_conveyor', 'working_on_table', 'finished'
-            let stationState = stations.map(function() {{
-                return {{ state: 'empty', progress: 0, xPos: 0, yPos: 0 }};
-            }});
-
+            // Objek produk yang mengalir di konveyor
+            // Posisi X direpresentasikan dari 0 hingga canvas.width
+            let products = [];
             let finishedCount = 0;
             let lastTimestamp = null;
-            let taktCounter = 0;
+            let spawnTimer = 0;
 
             function changeSpeed() {{
                 speedMultiplier = parseFloat(speedSelect.value);
@@ -208,14 +213,15 @@ if not edited_df.empty and takt_time_sec > 0:
             function drawScene() {{
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // 1. Konveyor Tengah Memanjang (Sesuai referensi gambar)
-                ctx.fillStyle = "#ffffff";
-                ctx.strokeStyle = "#374151";
+                // 1. Gambar Konveyor Tengah Memanjang (Tempat produk berjalan)
+                ctx.fillStyle = "#e2e8f0";
+                ctx.strokeStyle = "#475569";
                 ctx.lineWidth = 3;
                 ctx.fillRect(40, 205, canvas.width - 80, 70);
                 ctx.strokeRect(40, 205, canvas.width - 80, 70);
 
-                ctx.strokeStyle = "#9ca3af";
+                // Garis putus-putus konveyor
+                ctx.strokeStyle = "#94a3b8";
                 ctx.setLineDash([10, 10]);
                 ctx.beginPath();
                 ctx.moveTo(40, 240);
@@ -223,75 +229,80 @@ if not edited_df.empty and takt_time_sec > 0:
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // 2. Gambar Stasiun Sisi Atas & Bawah Berhadapan (Persis Gambar Referensi)
+                // 2. Gambar Stasiun Atas dan Bawah Berhadapan (Persis Layout Referensi Anda)
                 stations.forEach(function(stn, i) {{
                     let x = spacing * (i + 1);
-                    let isTop = (i % 2 === 0);
+                    let isTop = (i % 2 === 0); // Selang-seling atas dan bawah
                     let tableY = isTop ? 90 : 390;
-                    let operatorY = isTop ? 30 : 445;
+                    let operatorY = isTop ? 28 : 442;
 
-                    // Meja Kerja Operator (Warna Biru)
+                    // Kotak Meja Operator (Warna merah jika bottleneck, biru jika normal)
                     ctx.fillStyle = stn.is_bottleneck ? "#ef4444" : "#3b82f6";
                     ctx.fillRect(x - 45, tableY - 25, 90, 50);
-                    ctx.strokeStyle = "#1f2937";
+                    ctx.strokeStyle = "#0f172a";
                     ctx.lineWidth = 2;
                     ctx.strokeRect(x - 45, tableY - 25, 90, 50);
 
-                    // Teks Nama Proses & CT
+                    // Teks Nama Proses & Effective CT
                     ctx.fillStyle = "#ffffff";
                     ctx.font = "bold 10px Arial";
                     ctx.textAlign = "center";
-                    ctx.fillText(stn.base_name, x, tableY - 8);
+                    ctx.fillText(stn.display_name, x, tableY - 8);
                     ctx.font = "10px Arial";
-                    ctx.fillText("CT: " + stn.ct.toFixed(1) + "s", x, tableY + 10);
+                    ctx.fillText("CT: " + stn.eff_ct.toFixed(1) + "s", x, tableY + 10);
 
-                    // Ikon Kursi & Operator (● 👤) persis gambar referensi
-                    ctx.fillStyle = "#1f2937";
+                    // Ikon Kursi & Operator ( (● 👤) ) persis gambar referensi Anda
+                    ctx.fillStyle = "#0f172a";
                     ctx.font = "bold 13px Arial";
                     ctx.fillText("(● 👤)", x, operatorY);
+                }));
 
-                    // Progress Bar Pengerjaan di Meja
-                    let state = stationState[i];
-                    let progPercent = Math.min(100, (state.progress / stn.ct) * 100);
-                    ctx.fillStyle = "#d1d5db";
-                    ctx.fillRect(x - 40, tableY + 30, 80, 5);
-                    if (state.state === 'working_on_table') {{
-                        ctx.fillStyle = "#10b981";
-                        ctx.fillRect(x - 40, tableY + 30, (80 * (progPercent / 100)), 5);
-                    }}
-
-                    // 3. Visualisasi Sepatu (👟): Di Konveyor atau Diambil ke Meja Operator
-                    if (state.state === 'on_conveyor') {{
-                        // Sepatu berjalan di atas konveyor tengah
+                // 3. Gambar Produk (👟) yang Berjalan di Konveyor atau Dikerjakan di Meja
+                products.forEach(function(prod) {{
+                    if (prod.status === 'conveyor') {{
                         ctx.fillStyle = "#10b981";
                         ctx.beginPath();
-                        ctx.arc(x, 240, 14, 0, Math.PI * 2);
+                        ctx.arc(prod.x, 240, 14, 0, Math.PI * 2);
                         ctx.fill();
                         ctx.strokeStyle = "#047857";
                         ctx.lineWidth = 2;
                         ctx.stroke();
+
                         ctx.fillStyle = "#ffffff";
                         ctx.font = "11px Arial";
                         ctx.textAlign = "center";
-                        ctx.fillText("👟", x, 244);
-                    }} else if (state.state === 'working_on_table') {{
-                        // Sepatu DITARIK oleh operator ke atas meja kerja
+                        ctx.fillText("👟", prod.x, 244);
+                    }} else if (prod.status === 'working') {{
+                        let stn = stations[prod.stationIdx];
+                        let isTop = (prod.stationIdx % 2 === 0);
+                        let tableY = isTop ? 90 : 390;
+                        let stnX = spacing * (prod.stationIdx + 1);
+
+                        // Sepatu ada di atas meja operator
                         ctx.fillStyle = "#f59e0b";
                         ctx.beginPath();
-                        ctx.arc(x, tableY, 14, 0, Math.PI * 2);
+                        ctx.arc(stnX, tableY, 14, 0, Math.PI * 2);
                         ctx.fill();
                         ctx.strokeStyle = "#b45309";
                         ctx.lineWidth = 2;
                         ctx.stroke();
+
                         ctx.fillStyle = "#ffffff";
                         ctx.font = "11px Arial";
                         ctx.textAlign = "center";
-                        ctx.fillText("👟", x, tableY + 4);
+                        ctx.fillText("👟", stnX, tableY + 4);
+
+                        // Progress bar pengerjaan di bawah meja
+                        let prog = Math.min(100, (prod.workElapsed / stn.eff_ct) * 100);
+                        ctx.fillStyle = "#cbd5e1";
+                        ctx.fillRect(stnX - 40, tableY + 30, 80, 5);
+                        ctx.fillStyle = "#10b981";
+                        ctx.fillRect(stnX - 40, tableY + 30, (80 * (prog / 100)), 5);
                     }}
                 }});
 
                 // Info Total Output Selesai
-                ctx.fillStyle = "#1b5e20";
+                ctx.fillStyle = "#0f172a";
                 ctx.font = "bold 13px Arial";
                 ctx.textAlign = "left";
                 ctx.fillText("📦 Total Sepatu Selesai: " + finishedCount + " Pcs", 50, 470);
@@ -306,46 +317,54 @@ if not edited_df.empty and takt_time_sec > 0:
 
                 let adjustedDelta = deltaTime * speedMultiplier;
                 timeElapsed += adjustedDelta;
-                taktCounter += adjustedDelta;
+                spawnTimer += adjustedDelta;
 
-                // Produk baru masuk ke konveyor stasiun pertama setiap kali Takt Time tercapai
-                if (taktCounter >= Math.max(0.5, taktTime)) {{
-                    taktCounter = 0;
-                    if (stationState[0].state === 'empty') {{
-                        stationState[0].state = 'on_conveyor'; // Masuk ke konveyor stasiun 1
-                    }}
+                // Produk baru masuk ke konveyor setiap takt time tercapai
+                if (spawnTimer >= Math.max(1.0, taktTime)) {{
+                    spawnTimer = 0;
+                    products.push({{
+                        id: Math.random(),
+                        x: 50,
+                        status: 'conveyor',
+                        stationIdx: 0,
+                        workElapsed: 0
+                    }});
                 }}
 
-                // Simulasi Pergerakan Fisik: Konveyor -> Diambil ke Meja -> Dikerjakan -> Dikembalikan ke Konveyor
-                for (let i = stations.length - 1; i >= 0; i--) {{
-                    let state = stationState[i];
-                    let stn = stations[i];
+                // Pergerakan produk di konveyor dan interaksi dengan operator
+                products.forEach(function(prod) {{
+                    if (prod.status === 'conveyor') {{
+                        // Konveyor bergerak maju
+                        prod.x += 80 * adjustedDelta;
 
-                    if (state.state === 'on_conveyor') {{
-                        // Operator mengambil sepatu dari konveyor ke meja kerja
-                        state.state = 'working_on_table';
-                        state.progress = 0;
-                    }} else if (state.state === 'working_on_table') {{
-                        // Operator mengerjakan di meja sesuai Cycle Time
-                        state.progress += adjustedDelta;
+                        let targetStnIdx = prod.stationIdx;
+                        let targetX = spacing * (targetStnIdx + 1);
 
-                        if (state.progress >= stn.ct) {{
-                            // Selesai dikerjakan, dikembalikan ke konveyor untuk diteruskan
-                            if (i === stations.length - 1) {{
+                        // Jika produk tiba di posisi stasiun kerjanya, operator menariknya ke meja
+                        if (prod.x >= targetX) {{
+                            prod.x = targetX;
+                            prod.status = 'working';
+                            prod.workElapsed = 0;
+                        }}
+                    }} else if (prod.status === 'working') {{
+                        let stn = stations[prod.stationIdx];
+                        prod.workElapsed += adjustedDelta;
+
+                        // Jika selesai dikerjakan sesuai Effective CT
+                        if (prod.workElapsed >= stn.eff_ct) {{
+                            prod.stationIdx++;
+                            if (prod.stationIdx >= stations.length) {{
                                 finishedCount++;
-                                state.state = 'empty';
-                                state.progress = 0;
+                                prod.status = 'finished'; // Keluar lini
                             }} else {{
-                                // Estafet ke konveyor stasiun berikutnya jika stasiun sebelah kosong
-                                if (stationState[i + 1].state === 'empty') {{
-                                    stationState[i + 1].state = 'on_conveyor';
-                                    state.state = 'empty';
-                                    state.progress = 0;
-                                }}
+                                prod.status = 'conveyor'; // Dikembalikan ke konveyor meluncur ke stasiun berikutnya
                             }}
                         }}
                     }}
-                }}
+                }});
+
+                // Bersihkan produk yang sudah selesai
+                products = products.filter(p => p.status !== 'finished');
 
                 timerDisplay.innerText = "⏱️ Waktu Aktual: " + timeElapsed.toFixed(1) + " Detik | Takt Time: " + taktTime.toFixed(1) + "s (Kecepatan: " + speedMultiplier + "x)";
                 
@@ -369,13 +388,11 @@ if not edited_df.empty and takt_time_sec > 0:
 
             function resetSimulation() {{
                 pauseSimulation();
-                timeElapsed = 0;
+                    timeElapsed = 0;
                 finishedCount = 0;
-                taktCounter = 0;
+                spawnTimer = 0;
+                products = [];
                 lastTimestamp = null;
-                stationState = stations.map(function() {{
-                    return {{ state: 'empty', progress: 0 }};
-                }});
                 timerDisplay.innerText = "⏱️ Waktu Aktual: 0.0 Detik | Takt Time: " + taktTime.toFixed(1) + "s";
                 drawScene();
             }}
@@ -390,7 +407,7 @@ if not edited_df.empty and takt_time_sec > 0:
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
-    st.subheader("3. Yamazumi Chart (Analisis Cycle Time vs Takt Time)")
+    st.subheader("3. Yamazumi Chart (Analisis Effective CT vs Takt Time)")
     
     import plotly.graph_objects as go
     fig_bar = go.Figure()
@@ -412,4 +429,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_correct_ct")
