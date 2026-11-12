@@ -4,8 +4,8 @@ import json
 
 st.set_page_config(page_title="Line Balancing One-Piece Flow Simulator", layout="wide")
 
-st.title("🏭 Production Line One-Piece Flow Simulator")
-st.caption("Simulasi lini produksi: Konveyor tengah berjalan per ketukan Takt Time, meja operator berhadap-hadapan di atas & bawah, tanpa penumpukan WIP.")
+st.title("🏭 Production Line One-Piece Flow Simulator (Pick, Work & Release)")
+st.caption("Simulasi riil: Produk di konveyor ditarik ke meja operator, dikerjakan sesuai Cycle Time, lalu dikembalikan ke konveyor.")
 
 # --- SIDEBAR: PARAMETER OPERASIONAL ---
 st.sidebar.header("⚙️ Parameter Operasional")
@@ -21,7 +21,7 @@ st.write("Isi proses dan jumlah MP per stasiun. Total MP menentukan jumlah stasi
 
 default_data = pd.DataFrame({
     "Nama Proses": ["Cutting", "Stitching 1", "Stitching 2", "Assembly", "Outsole", "Packing"],
-    "Cycle Time Base (s)": [4.0, 12.0, 10.0, 8.0, 6.0, 4.0],
+    "Cycle Time Base (s)": [4.0, 10.0, 8.0, 7.0, 5.0, 3.0],
     "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
     "Actual MP": [1, 2, 2, 1, 1, 1]
 })
@@ -59,12 +59,11 @@ if not edited_df.empty and takt_time_sec > 0:
     col3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI LAYOUT BERHADAPAN (ONE-PIECE FLOW) ---
+    # --- STEP 2: ANIMASI LAYOUT BERHADAPAN (AMBIL DARI CVY -> MEJA -> KEMBALI KE CVY) ---
     st.markdown("---")
-    st.subheader("2. 🎬 Simulasi Layout Konveyor Tengah & Operator Berhadapan")
-    st.caption("Produk bergerak satu per satu di konveyor tengah sesuai takt time. Operator di atas dan bawah mengerjakan proses secara sinkron tanpa WIP.")
+    st.subheader("2. 🎬 Simulasi Interaksi Konveyor & Meja Operator")
+    st.caption("Produk berjalan di konveyor, diambil operator ke meja untuk diproses sesuai Cycle Time, lalu dikembalikan ke konveyor.")
 
-    # Memperluas daftar stasiun berdasarkan Actual MP masing-masing proses agar terpetak di layout
     layout_stations = []
     for idx, row in df.iterrows():
         mp_count = int(row["Actual MP"])
@@ -158,7 +157,7 @@ if not edited_df.empty and takt_time_sec > 0:
     <body>
         <div id="canvas-container">
             <h3 id="timer-display" style="margin: 0 0 10px 0; color: #1b5e20; font-size: 18px;">⏱️ Waktu Aktual: 0.0 Detik | Takt Time: {takt_val:.1f}s</h3>
-            <canvas id="simCanvas" width="1050" height="460"></canvas>
+            <canvas id="simCanvas" width="1050" height="480"></canvas>
             <div class="panel">
                 <div class="controls">
                     <button onclick="startSimulation()">▶ Play</button>
@@ -193,9 +192,9 @@ if not edited_df.empty and takt_time_sec > 0:
             const nStations = stations.length;
             const spacing = canvas.width / (nStations + 1);
 
-            // One-Piece Flow: Setiap stasiun memegang tepat 1 produk (atau kosong)
+            // Status tiap stasiun: 'on_conveyor', 'working_on_table', 'finished'
             let stationState = stations.map(function() {{
-                return {{ hasProduct: false, progress: 0 }};
+                return {{ state: 'empty', progress: 0, xPos: 0, yPos: 0 }};
             }});
 
             let finishedCount = 0;
@@ -209,30 +208,29 @@ if not edited_df.empty and takt_time_sec > 0:
             function drawScene() {{
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // 1. Konveyor Tengah Memanjang (Menyerupai referensi gambar)
+                // 1. Konveyor Tengah Memanjang (Sesuai referensi gambar)
                 ctx.fillStyle = "#ffffff";
                 ctx.strokeStyle = "#374151";
                 ctx.lineWidth = 3;
-                ctx.fillRect(40, 195, canvas.width - 80, 70);
-                ctx.strokeRect(40, 195, canvas.width - 80, 70);
+                ctx.fillRect(40, 205, canvas.width - 80, 70);
+                ctx.strokeRect(40, 205, canvas.width - 80, 70);
 
-                // Garis tengah konveyor
                 ctx.strokeStyle = "#9ca3af";
                 ctx.setLineDash([10, 10]);
                 ctx.beginPath();
-                ctx.moveTo(40, 230);
-                ctx.lineTo(canvas.width - 40, 230);
+                ctx.moveTo(40, 240);
+                ctx.lineTo(canvas.width - 40, 240);
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // 2. Gambar Stasiun Sisi Atas dan Bawah Berhadapan
+                // 2. Gambar Stasiun Sisi Atas & Bawah Berhadapan (Persis Gambar Referensi)
                 stations.forEach(function(stn, i) {{
                     let x = spacing * (i + 1);
-                    let isTop = (i % 2 === 0); // Selang-seling atas dan bawah seperti gambar referensi
-                    let tableY = isTop ? 85 : 375;
-                    let operatorY = isTop ? 28 : 432;
+                    let isTop = (i % 2 === 0);
+                    let tableY = isTop ? 90 : 390;
+                    let operatorY = isTop ? 30 : 445;
 
-                    // Kotak Meja Stasiun (Biru seperti gambar referensi)
+                    // Meja Kerja Operator (Warna Biru)
                     ctx.fillStyle = stn.is_bottleneck ? "#ef4444" : "#3b82f6";
                     ctx.fillRect(x - 45, tableY - 25, 90, 50);
                     ctx.strokeStyle = "#1f2937";
@@ -243,40 +241,52 @@ if not edited_df.empty and takt_time_sec > 0:
                     ctx.fillStyle = "#ffffff";
                     ctx.font = "bold 10px Arial";
                     ctx.textAlign = "center";
-                    ctx.fillText(stn.name, x, tableY - 8);
+                    ctx.fillText(stn.base_name, x, tableY - 8);
                     ctx.font = "10px Arial";
                     ctx.fillText("CT: " + stn.ct.toFixed(1) + "s", x, tableY + 10);
 
-                    // Ikon Kursi & Operator (C) dan (●) persis gaya gambar referensi
+                    // Ikon Kursi & Operator (● 👤) persis gambar referensi
                     ctx.fillStyle = "#1f2937";
-                    ctx.font = "bold 14px Arial";
-                    let operatorSymbol = isTop ? " (● " : " (● ";
-                    ctx.fillText("👤 " + stn.base_name, x, operatorY);
+                    ctx.font = "bold 13px Arial";
+                    ctx.fillText("(● 👤)", x, operatorY);
 
-                    // Progress Bar Pengerjaan Stasiun
+                    // Progress Bar Pengerjaan di Meja
                     let state = stationState[i];
                     let progPercent = Math.min(100, (state.progress / stn.ct) * 100);
                     ctx.fillStyle = "#d1d5db";
                     ctx.fillRect(x - 40, tableY + 30, 80, 5);
-                    if (state.hasProduct) {{
+                    if (state.state === 'working_on_table') {{
                         ctx.fillStyle = "#10b981";
                         ctx.fillRect(x - 40, tableY + 30, (80 * (progPercent / 100)), 5);
                     }}
 
-                    // 3. Gambar Sepatu (👟) di Konveyor Sesuai Posisi Stasiun (One-Piece Flow Murni)
-                    if (state.hasProduct) {{
+                    // 3. Visualisasi Sepatu (👟): Di Konveyor atau Diambil ke Meja Operator
+                    if (state.state === 'on_conveyor') {{
+                        // Sepatu berjalan di atas konveyor tengah
                         ctx.fillStyle = "#10b981";
                         ctx.beginPath();
-                        ctx.arc(x, 230, 15, 0, Math.PI * 2);
+                        ctx.arc(x, 240, 14, 0, Math.PI * 2);
                         ctx.fill();
                         ctx.strokeStyle = "#047857";
                         ctx.lineWidth = 2;
                         ctx.stroke();
-
                         ctx.fillStyle = "#ffffff";
-                        ctx.font = "12px Arial";
+                        ctx.font = "11px Arial";
                         ctx.textAlign = "center";
-                        ctx.fillText("👟", x, 234);
+                        ctx.fillText("👟", x, 244);
+                    }} else if (state.state === 'working_on_table') {{
+                        // Sepatu DITARIK oleh operator ke atas meja kerja
+                        ctx.fillStyle = "#f59e0b";
+                        ctx.beginPath();
+                        ctx.arc(x, tableY, 14, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.strokeStyle = "#b45309";
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                        ctx.fillStyle = "#ffffff";
+                        ctx.font = "11px Arial";
+                        ctx.textAlign = "center";
+                        ctx.fillText("👟", x, tableY + 4);
                     }}
                 }});
 
@@ -284,7 +294,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 ctx.fillStyle = "#1b5e20";
                 ctx.font = "bold 13px Arial";
                 ctx.textAlign = "left";
-                ctx.fillText("📦 Total Sepatu Selesai: " + finishedCount + " Pcs", 50, 445);
+                ctx.fillText("📦 Total Sepatu Selesai: " + finishedCount + " Pcs", 50, 470);
             }}
 
             function update(timestamp) {{
@@ -298,37 +308,38 @@ if not edited_df.empty and takt_time_sec > 0:
                 timeElapsed += adjustedDelta;
                 taktCounter += adjustedDelta;
 
-                // Logika One-Piece Flow: Produk masuk setiap kali durasi Takt Time tercapai
-                if (taktCounter >= taktTime) {{
+                // Produk baru masuk ke konveyor stasiun pertama setiap kali Takt Time tercapai
+                if (taktCounter >= Math.max(0.5, taktTime)) {{
                     taktCounter = 0;
-                    // Masukkan produk baru ke stasiun pertama jika kosong
-                    if (!stationState[0].hasProduct) {{
-                        stationState[0].hasProduct = true;
-                        stationState[0].progress = 0;
+                    if (stationState[0].state === 'empty') {{
+                        stationState[0].state = 'on_conveyor'; // Masuk ke konveyor stasiun 1
                     }}
                 }}
 
-                // Proses pengerjaan setiap stasiun secara simultan (One-Piece Flow estafet)
+                // Simulasi Pergerakan Fisik: Konveyor -> Diambil ke Meja -> Dikerjakan -> Dikembalikan ke Konveyor
                 for (let i = stations.length - 1; i >= 0; i--) {{
                     let state = stationState[i];
                     let stn = stations[i];
 
-                    if (state.hasProduct) {{
+                    if (state.state === 'on_conveyor') {{
+                        // Operator mengambil sepatu dari konveyor ke meja kerja
+                        state.state = 'working_on_table';
+                        state.progress = 0;
+                    }} else if (state.state === 'working_on_table') {{
+                        // Operator mengerjakan di meja sesuai Cycle Time
                         state.progress += adjustedDelta;
 
-                        // Jika selesai dikerjakan sesuai Cycle Time stasiun ini
                         if (state.progress >= stn.ct) {{
+                            // Selesai dikerjakan, dikembalikan ke konveyor untuk diteruskan
                             if (i === stations.length - 1) {{
-                                // Jika di stasiun terakhir, produk selesai keluar lini
                                 finishedCount++;
-                                state.hasProduct = false;
+                                state.state = 'empty';
                                 state.progress = 0;
                             }} else {{
-                                // Estafet ke stasiun berikutnya jika stasiun sebelah depan sedang kosong (Zero WIP)
-                                if (!stationState[i + 1].hasProduct) {{
-                                    stationState[i + 1].hasProduct = true;
-                                    stationState[i + 1].progress = 0;
-                                    state.hasProduct = false;
+                                // Estafet ke konveyor stasiun berikutnya jika stasiun sebelah kosong
+                                if (stationState[i + 1].state === 'empty') {{
+                                    stationState[i + 1].state = 'on_conveyor';
+                                    state.state = 'empty';
                                     state.progress = 0;
                                 }}
                             }}
@@ -363,7 +374,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 taktCounter = 0;
                 lastTimestamp = null;
                 stationState = stations.map(function() {{
-                    return {{ hasProduct: false, progress: 0 }};
+                    return {{ state: 'empty', progress: 0 }};
                 }});
                 timerDisplay.innerText = "⏱️ Waktu Aktual: 0.0 Detik | Takt Time: " + taktTime.toFixed(1) + "s";
                 drawScene();
@@ -375,7 +386,7 @@ if not edited_df.empty and takt_time_sec > 0:
     </html>
     """
 
-    st.components.v1.html(html_code, height=520, scrolling=False)
+    st.components.v1.html(html_code, height=540, scrolling=False)
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
@@ -401,4 +412,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_one_piece")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final")
