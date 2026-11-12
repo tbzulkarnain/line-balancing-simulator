@@ -4,8 +4,8 @@ import json
 
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
-st.title("🏭 Production Line Balancing & Bottleneck Simulator")
-st.caption("Simulasi konveyor: Operator mengambil 1 sepatu ke meja kerja. Jika stasiun lambat (bottleneck), sepatu berikutnya berjejer mundur di konveyor tanpa saling menimpa.")
+st.title("🏭 Production Line Balancing & Parallel Operator Simulator")
+st.caption("Simulasi lini riil: Waktu proses tetap utuh per operator. Jika ada MP > 1 pada satu proses, operator bekerja secara paralel membagi sepatu yang lewat di konveyor.")
 
 # --- SIDEBAR: PARAMETER OPERASIONAL ---
 st.sidebar.header("⚙️ Parameter Operasional")
@@ -17,13 +17,13 @@ st.sidebar.metric(label="⏱️ Takt Time Target", value=f"{takt_time_sec:.2f} d
 
 # --- STEP 1: INPUT DATA TABEL PROSES & ACTUAL MP ---
 st.subheader("1. Data Input Proses & Actual MP")
-st.write("Naikkan CT Base salah satu proses (misal Assembly jadi 35s) untuk melihat antrean sepatu berjejer di konveyor depan stasiun tersebut.")
+st.write("Masukkan CT Base dan Allowance. Waktu pengerjaan (*Standard Time*) per operator tetap utuh. Jika MP > 1, operator-operator tersebut bekerja paralel membagi sepatu.")
 
 default_data = pd.DataFrame({
-    "Nama Proses": ["Cutting", "Stitching", "Assembly", "Outsole", "Packing"],
-    "Cycle Time Base (s)": [8.0, 18.0, 28.0, 10.0, 7.0],
-    "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0],
-    "Actual MP": [1, 2, 1, 1, 1]
+    "Nama Proses": ["st collar lining", "st tip", "st counter", "hotmelt", "st margin", "punching", "insert lace"],
+    "Cycle Time Base (s)": [10.0, 75.0, 12.0, 18.0, 17.0, 15.0, 15.0],
+    "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+    "Actual MP": [1, 4, 1, 1, 1, 2, 1]  # st tip diberi 4 MP paralel
 })
 
 edited_df = st.data_editor(
@@ -41,6 +41,8 @@ edited_df = st.data_editor(
 if not edited_df.empty and takt_time_sec > 0:
     df = edited_df.copy()
     df["Standard Time (s)"] = df["Cycle Time Base (s)"] * (1 + df["Allowance (%)"] / 100)
+    
+    # Kapasitas proses secara keseluruhan (Standard Time / MP) untuk perhitungan Yamazumi / Bottleneck
     df["Effective CT (s)"] = df["Standard Time (s)"] / df["Actual MP"]
     
     max_ct = df["Effective CT (s)"].max()
@@ -55,33 +57,49 @@ if not edited_df.empty and takt_time_sec > 0:
     st.markdown("---")
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("🎯 Balancing Rate", f"{balancing_rate:.2f}%")
-    col2.metric("🚨 Bottleneck", f"{bottleneck_process}", delta=f"{max_ct:.1f} s", delta_color="inverse")
+    col2.metric("🚨 Bottleneck", f"{bottleneck_process}", delta=f"{max_ct:.1f} s/pcs (Effective)", delta_color="inverse")
     col3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI KANVAS DENGAN ANTREAN WIP TANPA TUMPUK ---
+    # --- STEP 2: ANIMASI KANVAS LAYOUT & PARALLEL OPERATOR ---
     st.markdown("---")
-    st.subheader("2. 🎬 Simulasi Layout Berhadapan & Visualisasi Antrean Bottleneck")
-    st.caption("Setiap operator hanya memegang 1 sepatu di meja. Sepatu berlebih akan berjejer rapi mundur di rel konveyor lengkap dengan penghitung jumlah WIP.")
+    st.subheader("2. 🎬 Simulasi Lini Produksi (Parallel Load Sharing)")
+    st.caption("Operator dengan proses yang sama (misal st tip 1 s.d 4) bekerja paralel membagi sepatu yang lewat di konveyor.")
 
-    stations_list = []
+    # Membangun urutan stasiun lini berdasarkan proses dan jumlah MP-nya
+    # Kita kelompokkan stasiun berdasarkan urutan proses di lini
+    line_stations = []
+    global_station_index = 0
+
     for idx, row in df.iterrows():
+        p_name = row["Nama Proses"]
         mp_count = int(row["Actual MP"])
-        std_time = row["Standard Time (s)"]
-        eff_ct = row["Effective CT (s)"]
-        is_bn = (row["Nama Proses"] == bottleneck_process)
-        
+        std_time = float(row["Standard Time (s)"])
+        is_bn = (p_name == bottleneck_process)
+
+        sub_stations = []
         for m in range(mp_count):
-            stations_list.append({
-                "process_name": row["Nama Proses"],
-                "display_name": row["Nama Proses"] + (f" ({m+1})" if mp_count > 1 else ""),
-                "std_time": float(std_time),
-                "eff_ct": float(eff_ct),
-                "mp": mp_count,
+            sub_stations.append({
+                "station_id": global_station_index,
+                "process_name": p_name,
+                "display_name": f"{p_name} ({m+1})",
+                "std_time": std_time,  # Waktu pengerjaan per operator TETAP UTUH (Standard Time)
                 "is_bottleneck": is_bn
             })
+            global_station_index++
+        
+        line_stations.append({
+            "process_name": p_name,
+            "sub_stations": sub_stations
+        })
 
-    stations_json = json.dumps(stations_list)
+    # Flatten untuk memudahkan iterasi posisi di canvas
+    flat_stations = []
+    for group in line_stations:
+        for sub in group["sub_stations"]:
+            flat_stations.append(sub)
+
+    stations_json = json.dumps(flat_stations)
     takt_val = float(takt_time_sec)
 
     html_code = f"""
@@ -98,13 +116,13 @@ if not edited_df.empty and takt_time_sec > 0:
             }}
             #canvas-container {{
                 background: #ffffff;
-                border: 2px solid #cbd5e1;
+                border: 2px solid #a5d6a7;
                 border-radius: 12px;
                 padding: 15px;
                 display: inline-block;
                 box-shadow: 0 4px 6px rgba(0,0,0,0.08);
                 width: 100%;
-                max-width: 1120px;
+                max-width: 1150px;
                 box-sizing: border-box;
             }}
             canvas {{
@@ -163,7 +181,7 @@ if not edited_df.empty and takt_time_sec > 0:
     <body>
         <div id="canvas-container">
             <h3 id="timer-display" style="margin: 0 0 10px 0; color: #1e293b; font-size: 18px;">⏱️ Waktu Aktual: 0.0 Detik | Takt Time: {takt_val:.1f}s</h3>
-            <canvas id="simCanvas" width="1080" height="500"></canvas>
+            <canvas id="simCanvas" width="1100" height="520"></canvas>
             <div class="panel">
                 <div class="controls">
                     <button onclick="startSimulation()">▶ Play</button>
@@ -196,8 +214,7 @@ if not edited_df.empty and takt_time_sec > 0:
             let speedMultiplier = 5;
 
             const nStations = stations.length;
-            const cols = Math.ceil(nStations / 2);
-            const colSpacing = (canvas.width - 140) / Math.max(1, cols);
+            const colSpacing = (canvas.width - 120) / Math.max(1, nStations);
 
             let products = [];
             let finishedCount = 0;
@@ -210,133 +227,126 @@ if not edited_df.empty and takt_time_sec > 0:
 
             function getStationCoords(i) {{
                 let isTop = (i % 2 === 0);
-                let colIdx = Math.floor(i / 2);
-                let x = 130 + colIdx * colSpacing;
-                let tableY = isTop ? 120 : 380;
+                let x = 80 + i * colSpacing + (colSpacing / 2);
+                let tableY = isTop ? 120 : 400;
                 return {{ x: x, tableY: tableY, isTop: isTop }};
             }}
 
             function drawScene() {{
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // 1. Konveyor Tengah Memanjang (Persis Referensi Gambar)
+                // 1. Konveyor Tengah Memanjang
                 ctx.fillStyle = "#f1f8e9";
                 ctx.strokeStyle = "#1f2937";
                 ctx.lineWidth = 2.5;
-                ctx.fillRect(40, 215, canvas.width - 80, 70);
-                ctx.strokeRect(40, 215, canvas.width - 80, 70);
+                ctx.fillRect(30, 230, canvas.width - 60, 65);
+                ctx.strokeRect(30, 230, canvas.width - 60, 65);
 
-                // Garis arah aliran konveyor
                 ctx.strokeStyle = "#94a3b8";
                 ctx.setLineDash([10, 10]);
                 ctx.beginPath();
-                ctx.moveTo(40, 250);
-                ctx.lineTo(canvas.width - 40, 250);
+                ctx.moveTo(30, 262.5);
+                ctx.lineTo(canvas.width - 30, 262.5);
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // 2. Gambar Meja & Operator Sisi Atas dan Bawah (Layout Sesuai Gambar Referensi)
+                // 2. Gambar Meja & Operator Sisi Atas dan Bawah
                 stations.forEach(function(stn, i) {{
                     let pos = getStationCoords(i);
                     let x = pos.x;
                     let tableY = pos.tableY;
                     let isTop = pos.isTop;
 
-                    // Label Nama Proses di atas meja (untuk baris atas) atau di bawah meja (untuk baris bawah)
+                    // Nama Proses di atas/bawah meja
                     ctx.fillStyle = "#111827";
-                    ctx.font = "bold 12px Arial";
+                    ctx.font = "bold 10px Arial";
                     ctx.textAlign = "center";
                     let labelY = isTop ? (tableY - 52) : (tableY + 62);
-                    ctx.fillText(stn.display_name, x, labelY);
-                    ctx.font = "11px Arial";
+                    ctx.fillText(stn.process_name, x, labelY);
+                    ctx.font = "10px Arial";
                     ctx.fillStyle = "#374151";
-                    ctx.fillText("CT: " + stn.eff_ct.toFixed(1) + "s", x, labelY + (isTop ? 14 : -14));
+                    ctx.fillText("CT: " + stn.std_time.toFixed(1) + "s", x, labelY + (isTop ? 13 : -13));
+                    ctx.fillText("(" + (i+1) + ")", x, labelY + (isTop ? 26 : -26));
 
-                    // Meja Kerja (Biru / Merah jika Bottleneck) - Vertikal seperti gambar referensi
+                    // Meja Kerja (Biru / Merah jika Bottleneck)
                     ctx.fillStyle = stn.is_bottleneck ? "#dc2626" : "#3b66b8";
-                    ctx.fillRect(x - 32, tableY - 32, 64, 64);
+                    ctx.fillRect(x - 28, tableY - 28, 56, 56);
                     ctx.strokeStyle = "#ffffff";
                     ctx.lineWidth = 2;
-                    ctx.strokeRect(x - 32, tableY - 32, 64, 64);
+                    ctx.strokeRect(x - 28, tableY - 28, 56, 56);
 
-                    // Kursi & Operator di sebelah KIRI meja (persis gambar referensi)
-                    let opX = x - 48;
+                    // Kursi & Operator di sebelah KIRI meja
+                    let opX = x - 42;
                     ctx.fillStyle = "#000000";
                     ctx.beginPath();
-                    ctx.arc(opX, tableY, 11, 0, Math.PI * 2);
+                    ctx.arc(opX, tableY, 10, 0, Math.PI * 2);
                     ctx.fill();
 
-                    // Sandaran kursi melengkung di kiri lingkaran operator
                     ctx.strokeStyle = "#000000";
-                    ctx.lineWidth = 3;
+                    ctx.lineWidth = 2.5;
                     ctx.beginPath();
-                    ctx.arc(opX, tableY, 16, Math.PI * 0.72, Math.PI * 1.28);
+                    ctx.arc(opX, tableY, 14, Math.PI * 0.72, Math.PI * 1.28);
                     ctx.stroke();
 
-                    // Hitung total WIP yang menunggu/dikerjakan di stasiun ini
-                    let waitingCount = products.filter(p => p.stationIdx === i && p.status === 'queued').length;
-                    let workingCount = products.filter(p => p.stationIdx === i && p.status === 'working').length;
+                    // Hitung WIP tertahan di stasiun ini
+                    let waitingCount = products.filter(p => p.currentStationIdx === i && p.status === 'queued').length;
+                    let workingCount = products.filter(p => p.currentStationIdx === i && p.status === 'working').length;
                     let totalHold = waitingCount + workingCount;
 
-                    // Badge Indikator Jumlah Sepatu yang Dipegang/Antre di Stasiun Ini
                     if (totalHold > 0) {{
                         ctx.fillStyle = waitingCount > 0 ? "#b91c1c" : "#047857";
                         ctx.beginPath();
-                        ctx.roundRect(x + 14, tableY - 42, 38, 18, 6);
+                        ctx.roundRect(x + 10, tableY - 38, 34, 16, 5);
                         ctx.fill();
                         ctx.fillStyle = "#ffffff";
-                        ctx.font = "bold 10px Arial";
-                        ctx.fillText("👟 " + totalHold, x + 33, tableY - 30);
+                        ctx.font = "bold 9px Arial";
+                        ctx.fillText("👟 " + totalHold, x + 27, tableY - 27);
                     }}
                 }});
 
-                // 3. Gambar Produk (👟) — Tidak Saling Menimpa!
+                // 3. Gambar Produk (👟)
                 products.forEach(function(prod) {{
                     if (prod.status === 'conveyor' || prod.status === 'queued') {{
-                        // Sepatu berjalan atau antre berjejer rapi di atas rel konveyor
                         ctx.fillStyle = prod.status === 'queued' ? "#fee2e2" : "#ffffff";
                         ctx.strokeStyle = prod.status === 'queued' ? "#dc2626" : "#1f2937";
                         ctx.lineWidth = 2;
                         ctx.beginPath();
-                        ctx.roundRect(prod.x - 16, 234, 32, 32, 6);
+                        ctx.roundRect(prod.x - 14, 248, 28, 28, 5);
                         ctx.fill();
                         ctx.stroke();
 
-                        ctx.font = "18px Arial";
+                        ctx.font = "15px Arial";
                         ctx.textAlign = "center";
-                        ctx.fillText("👟", prod.x, 256);
+                        ctx.fillText("👟", prod.x, 269);
                     }} else if (prod.status === 'working') {{
-                        // Hanya 1 sepatu yang sedang dikerjakan berada di atas meja operator
-                        let pos = getStationCoords(prod.stationIdx);
-                        let stn = stations[prod.stationIdx];
+                        let pos = getStationCoords(prod.currentStationIdx);
+                        let stn = stations[prod.currentStationIdx];
 
                         ctx.fillStyle = "#fef3c7";
                         ctx.strokeStyle = "#d97706";
                         ctx.lineWidth = 2;
                         ctx.beginPath();
-                        ctx.roundRect(pos.x - 16, pos.tableY - 18, 32, 32, 6);
+                        ctx.roundRect(pos.x - 14, pos.tableY - 14, 28, 28, 5);
                         ctx.fill();
                         ctx.stroke();
 
-                        ctx.font = "18px Arial";
+                        ctx.font = "15px Arial";
                         ctx.textAlign = "center";
-                        ctx.fillText("👟", pos.x, pos.tableY + 4);
+                        ctx.fillText("👟", pos.x, pos.tableY + 5);
 
-                        // Progress Bar Pengerjaan di dalam meja
-                        let prog = Math.min(100, (prod.workElapsed / stn.eff_ct) * 100);
+                        let prog = Math.min(100, (prod.workElapsed / stn.std_time) * 100);
                         ctx.fillStyle = "#1e293b";
-                        ctx.fillRect(pos.x - 24, pos.tableY + 20, 48, 6);
+                        ctx.fillRect(pos.x - 20, pos.tableY + 18, 40, 5);
                         ctx.fillStyle = "#10b981";
-                        ctx.fillRect(pos.x - 24, pos.tableY + 20, 48 * (prog / 100), 6);
+                        ctx.fillRect(pos.x - 20, pos.tableY + 18, 40 * (prog / 100), 5);
                     }}
                 }});
 
-                // Info Total Output Selesai & Total WIP di Lini
                 let totalWipInLine = products.length;
                 ctx.fillStyle = "#111827";
                 ctx.font = "bold 13px Arial";
                 ctx.textAlign = "left";
-                ctx.fillText("📦 Total Output Selesai: " + finishedCount + " Pcs   |   🔄 Total WIP di Lini: " + totalWipInLine + " Pcs", 45, 485);
+                ctx.fillText("📦 Total Output Selesai: " + finishedCount + " Pcs   |   🔄 Total WIP di Lini: " + totalWipInLine + " Pcs", 35, 505);
             }}
 
             function update(timestamp) {{
@@ -350,82 +360,92 @@ if not edited_df.empty and takt_time_sec > 0:
                 timeElapsed += adjustedDelta;
                 spawnTimer += adjustedDelta;
 
-                // Produk baru masuk ke awal konveyor setiap Takt Time
+                // Produk baru masuk ke konveyor setiap Takt Time
                 if (spawnTimer >= Math.max(1.0, taktTime)) {{
                     spawnTimer = 0;
                     products.push({{
                         id: Math.random(),
-                        x: 55,
+                        x: 45,
                         status: 'conveyor',
-                        stationIdx: 0,
+                        currentProcessStep: 0, // Indeks tahapan proses utama (0 = proses pertama, dst)
+                        currentStationIdx: -1,
                         workElapsed: 0
                     }});
                 }}
 
-                // Proses setiap stasiun: Cek apakah meja kosong untuk menarik sepatu dari konveyor
-                stations.forEach(function(stn, idx) {{
-                    let isStationBusy = products.some(p => p.stationIdx === idx && p.status === 'working');
-                    if (!isStationBusy) {{
-                        // Cari sepatu terdepan yang sedang menunggu/tiba di stasiun ini
-                        let candidate = products.find(p => p.stationIdx === idx && p.status === 'queued');
-                        if (candidate) {{
-                            candidate.status = 'working';
-                            candidate.workElapsed = 0;
-                        }}
-                    }}
-                }});
+                // Kelompokkan stasiun berdasarkan proses utamanya untuk sistem PARALLEL LOAD SHARING
+                // Contoh: proses 'st tip' punya sub-stasiun [1, 2, 3, 4]
+                let uniqueProcesses = [...new Set(stations.map(s => s.process_name))];
 
-                // Update posisi setiap sepatu agar berjejer rapi tanpa menimpa satu sama lain
-                for (let i = 0; i < products.length; i++) {{
-                    let prod = products[i];
+                products.forEach(function(prod) {{
+                    if (prod.status === 'conveyor') {{
+                        let targetProcName = uniqueProcesses[prod.currentProcessStep];
+                        
+                        // Cari semua sub-stasiun yang mengampu proses ini
+                        let candidateStations = stations.map((s, idx) => ({{\\ ...s, idx: idx }})).filter(s => s.process_name === targetProcName);
 
-                    if (prod.status === 'conveyor' || prod.status === 'queued') {{
-                        let targetPos = getStationCoords(prod.stationIdx);
-                        let targetX = targetPos.x;
+                        // Cari sub-stasiun mana yang meja kerjanya sedang KOSONG (tidak ada yang working)
+                        let availableStation = candidateStations.find(cs => !products.some(p => p.currentStationIdx === cs.idx && p.status === 'working'));
 
-                        // Hitung posisi antrean jika sudah ada sepatu lain yang antre di stasiun yang sama
-                        let aheadInSameStation = 0;
-                        for (let j = 0; j < i; j++) {{
-                            if (products[j].stationIdx === prod.stationIdx && (products[j].status === 'queued' || products[j].status === 'conveyor')) {{
-                                aheadInSameStation++;
-                            }}
-                        }}
-
-                        // Beri jarak 36px per sepatu agar berjejer mundur ke kiri dan TIDAK saling menimpa
-                        let stopX = targetX - (aheadInSameStation * 36);
-
-                        if (prod.x < stopX) {{
-                            prod.x += 110 * adjustedDelta;
-                            if (prod.x >= stopX) {{
-                                prod.x = stopX;
-                                prod.status = 'queued';
+                        if (availableStation) {{
+                            // Jika ada meja operator yang kosong di proses ini, arahkan sepatu ke sana!
+                            prod.currentStationIdx = availableStation.idx;
+                            let targetPos = getStationCoords(availableStation.idx);
+                            
+                            if (Math.abs(prod.x - targetPos.x) <= 5) {{
+                                prod.x = targetPos.x;
+                                prod.status = 'working';
+                                prod.workElapsed = 0;
                             }} else {{
-                                prod.status = 'conveyor';
+                                prod.x += 100 * adjustedDelta;
+                                if (prod.x > targetPos.x) prod.x = targetPos.x;
                             }}
                         }} else {{
-                            prod.x = stopX;
-                            prod.status = 'queued';
+                            // Jika SEMUA operator paralel di proses ini sedang sibuk, sepatu antre di konveyor (WIP)
+                            // Arahkan ke meja operator pertama dari proses tersebut sebagai titik antre
+                            let firstStationOfProc = candidateStations[0];
+                            let targetPos = getStationCoords(firstStationOfProc.idx);
+                            
+                            if (prod.x < targetPos.x) {{
+                                prod.x += 100 * adjustedDelta;
+                                if (prod.x >= targetPos.x) {{
+                                    prod.x = targetPos.x;
+                                    prod.status = 'queued';
+                                    prod.currentStationIdx = firstStationOfProc.idx;
+                                }}
+                            }} else {{
+                                prod.status = 'queued';
+                                prod.currentStationIdx = firstStationOfProc.idx;
+                            }}
+                        }}
+                    }} else if (prod.status === 'queued') {{
+                        // Cek apakah sekarang ada operator paralel di proses ini yang sudah kosong
+                        let targetProcName = uniqueProcesses[prod.currentProcessStep];
+                        let candidateStations = stations.map((s, idx) => ({{\\ ...s, idx: idx }})).filter(s => s.process_name === targetProcName);
+                        let availableStation = candidateStations.find(cs => !products.some(p => p.currentStationIdx === cs.idx && p.status === 'working'));
+
+                        if (availableStation) {{
+                            prod.currentStationIdx = availableStation.idx;
+                            prod.status = 'working';
+                            prod.workElapsed = 0;
                         }}
                     }} else if (prod.status === 'working') {{
-                        let stn = stations[prod.stationIdx];
+                        let stn = stations[prod.currentStationIdx];
                         prod.workElapsed += adjustedDelta;
 
-                        // Selesai dikerjakan di meja, kembalikan ke rel konveyor untuk menuju stasiun berikutnya
-                        if (prod.workElapsed >= stn.eff_ct) {{
-                            let currentPos = getStationCoords(prod.stationIdx);
-                            prod.stationIdx++;
-
-                            if (prod.stationIdx >= stations.length) {{
+                        // Selesai dikerjakan di meja operator, kembalikan ke konveyor untuk lanjut ke PROSES SELANJUTNYA
+                        if (prod.workElapsed >= stn.std_time) {{
+                            prod.currentProcessStep++;
+                            if (prod.currentProcessStep >= uniqueProcesses.length) {{
                                 finishedCount++;
                                 prod.status = 'finished';
                             }} else {{
-                                prod.x = currentPos.x;
                                 prod.status = 'conveyor';
                                 prod.workElapsed = 0;
                             }}
                         }}
                     }}
-                }}
+                }});
 
                 products = products.filter(p => p.status !== 'finished');
 
@@ -466,7 +486,7 @@ if not edited_df.empty and takt_time_sec > 0:
     </html>
     """
 
-    st.components.v1.html(html_code, height=560, scrolling=False)
+    st.components.v1.html(html_code, height=580, scrolling=False)
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
@@ -492,4 +512,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_no_overlap")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_parallel_load")
