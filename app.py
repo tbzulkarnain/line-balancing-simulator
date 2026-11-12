@@ -5,7 +5,7 @@ import json
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
 st.title("🏭 Production Line Balancing & Parallel Operator Simulator")
-st.caption("Simulasi lini riil: Waktu proses tetap utuh per operator. Jika ada MP > 1 pada satu proses, operator bekerja secara paralel membagi sepatu yang lewat di konveyor.")
+st.caption("Simulasi lini riil: Waktu proses tetap utuh per operator. Jika MP > 1, operator bekerja secara paralel membagi beban sepatu yang lewat di konveyor.")
 
 # --- SIDEBAR: PARAMETER OPERASIONAL ---
 st.sidebar.header("⚙️ Parameter Operasional")
@@ -17,7 +17,7 @@ st.sidebar.metric(label="⏱️ Takt Time Target", value=f"{takt_time_sec:.2f} d
 
 # --- STEP 1: INPUT DATA TABEL PROSES & ACTUAL MP ---
 st.subheader("1. Data Input Proses & Actual MP")
-st.write("Masukkan CT Base dan Allowance. Waktu pengerjaan (*Standard Time*) per operator tetap utuh. Jika MP > 1, operator-operator tersebut bekerja paralel membagi sepatu.")
+st.write("Masukkan CT Base dan Allowance. Waktu pengerjaan per operator tetap utuh. Jika MP > 1, operator-operator tersebut bekerja paralel membagi sepatu.")
 
 default_data = pd.DataFrame({
     "Nama Proses": ["st collar lining", "st tip", "st counter", "hotmelt", "st margin", "punching", "insert lace"],
@@ -42,7 +42,7 @@ if not edited_df.empty and takt_time_sec > 0:
     df = edited_df.copy()
     df["Standard Time (s)"] = df["Cycle Time Base (s)"] * (1 + df["Allowance (%)"] / 100)
     
-    # Kapasitas proses secara keseluruhan (Standard Time / MP) untuk perhitungan Yamazumi / Bottleneck
+    # Effective CT untuk perhitungan Yamazumi / Bottleneck
     df["Effective CT (s)"] = df["Standard Time (s)"] / df["Actual MP"]
     
     max_ct = df["Effective CT (s)"].max()
@@ -66,8 +66,6 @@ if not edited_df.empty and takt_time_sec > 0:
     st.subheader("2. 🎬 Simulasi Lini Produksi (Parallel Load Sharing)")
     st.caption("Operator dengan proses yang sama (misal st tip 1 s.d 4) bekerja paralel membagi sepatu yang lewat di konveyor.")
 
-    # Membangun urutan stasiun lini berdasarkan proses dan jumlah MP-nya
-    # Kita kelompokkan stasiun berdasarkan urutan proses di lini
     line_stations = []
     global_station_index = 0
 
@@ -83,17 +81,16 @@ if not edited_df.empty and takt_time_sec > 0:
                 "station_id": global_station_index,
                 "process_name": p_name,
                 "display_name": f"{p_name} ({m+1})",
-                "std_time": std_time,  # Waktu pengerjaan per operator TETAP UTUH (Standard Time)
+                "std_time": std_time,
                 "is_bottleneck": is_bn
             })
-            global_station_index++
+            global_station_index += 1  # DIPERBAIKI DI SINI
         
         line_stations.append({
             "process_name": p_name,
             "sub_stations": sub_stations
         })
 
-    # Flatten untuk memudahkan iterasi posisi di canvas
     flat_stations = []
     for group in line_stations:
         for sub in group["sub_stations"]:
@@ -257,7 +254,6 @@ if not edited_df.empty and takt_time_sec > 0:
                     let tableY = pos.tableY;
                     let isTop = pos.isTop;
 
-                    // Nama Proses di atas/bawah meja
                     ctx.fillStyle = "#111827";
                     ctx.font = "bold 10px Arial";
                     ctx.textAlign = "center";
@@ -268,14 +264,12 @@ if not edited_df.empty and takt_time_sec > 0:
                     ctx.fillText("CT: " + stn.std_time.toFixed(1) + "s", x, labelY + (isTop ? 13 : -13));
                     ctx.fillText("(" + (i+1) + ")", x, labelY + (isTop ? 26 : -26));
 
-                    // Meja Kerja (Biru / Merah jika Bottleneck)
                     ctx.fillStyle = stn.is_bottleneck ? "#dc2626" : "#3b66b8";
                     ctx.fillRect(x - 28, tableY - 28, 56, 56);
                     ctx.strokeStyle = "#ffffff";
                     ctx.lineWidth = 2;
                     ctx.strokeRect(x - 28, tableY - 28, 56, 56);
 
-                    // Kursi & Operator di sebelah KIRI meja
                     let opX = x - 42;
                     ctx.fillStyle = "#000000";
                     ctx.beginPath();
@@ -288,7 +282,6 @@ if not edited_df.empty and takt_time_sec > 0:
                     ctx.arc(opX, tableY, 14, Math.PI * 0.72, Math.PI * 1.28);
                     ctx.stroke();
 
-                    // Hitung WIP tertahan di stasiun ini
                     let waitingCount = products.filter(p => p.currentStationIdx === i && p.status === 'queued').length;
                     let workingCount = products.filter(p => p.currentStationIdx === i && p.status === 'working').length;
                     let totalHold = waitingCount + workingCount;
@@ -360,35 +353,27 @@ if not edited_df.empty and takt_time_sec > 0:
                 timeElapsed += adjustedDelta;
                 spawnTimer += adjustedDelta;
 
-                // Produk baru masuk ke konveyor setiap Takt Time
                 if (spawnTimer >= Math.max(1.0, taktTime)) {{
                     spawnTimer = 0;
                     products.push({{
                         id: Math.random(),
                         x: 45,
                         status: 'conveyor',
-                        currentProcessStep: 0, // Indeks tahapan proses utama (0 = proses pertama, dst)
+                        currentProcessStep: 0,
                         currentStationIdx: -1,
                         workElapsed: 0
                     }});
                 }}
 
-                // Kelompokkan stasiun berdasarkan proses utamanya untuk sistem PARALLEL LOAD SHARING
-                // Contoh: proses 'st tip' punya sub-stasiun [1, 2, 3, 4]
                 let uniqueProcesses = [...new Set(stations.map(s => s.process_name))];
 
                 products.forEach(function(prod) {{
                     if (prod.status === 'conveyor') {{
                         let targetProcName = uniqueProcesses[prod.currentProcessStep];
-                        
-                        // Cari semua sub-stasiun yang mengampu proses ini
-                        let candidateStations = stations.map((s, idx) => ({{\\ ...s, idx: idx }})).filter(s => s.process_name === targetProcName);
-
-                        // Cari sub-stasiun mana yang meja kerjanya sedang KOSONG (tidak ada yang working)
+                        let candidateStations = stations.map((s, idx) => Object.assign({{}}, s, {{ idx: idx }})).filter(s => s.process_name === targetProcName);
                         let availableStation = candidateStations.find(cs => !products.some(p => p.currentStationIdx === cs.idx && p.status === 'working'));
 
                         if (availableStation) {{
-                            // Jika ada meja operator yang kosong di proses ini, arahkan sepatu ke sana!
                             prod.currentStationIdx = availableStation.idx;
                             let targetPos = getStationCoords(availableStation.idx);
                             
@@ -401,8 +386,6 @@ if not edited_df.empty and takt_time_sec > 0:
                                 if (prod.x > targetPos.x) prod.x = targetPos.x;
                             }}
                         }} else {{
-                            // Jika SEMUA operator paralel di proses ini sedang sibuk, sepatu antre di konveyor (WIP)
-                            // Arahkan ke meja operator pertama dari proses tersebut sebagai titik antre
                             let firstStationOfProc = candidateStations[0];
                             let targetPos = getStationCoords(firstStationOfProc.idx);
                             
@@ -419,9 +402,8 @@ if not edited_df.empty and takt_time_sec > 0:
                             }}
                         }}
                     }} else if (prod.status === 'queued') {{
-                        // Cek apakah sekarang ada operator paralel di proses ini yang sudah kosong
                         let targetProcName = uniqueProcesses[prod.currentProcessStep];
-                        let candidateStations = stations.map((s, idx) => ({{\\ ...s, idx: idx }})).filter(s => s.process_name === targetProcName);
+                        let candidateStations = stations.map((s, idx) => Object.assign({{}}, s, {{ idx: idx }})).filter(s => s.process_name === targetProcName);
                         let availableStation = candidateStations.find(cs => !products.some(p => p.currentStationIdx === cs.idx && p.status === 'working'));
 
                         if (availableStation) {{
@@ -433,7 +415,6 @@ if not edited_df.empty and takt_time_sec > 0:
                         let stn = stations[prod.currentStationIdx];
                         prod.workElapsed += adjustedDelta;
 
-                        // Selesai dikerjakan di meja operator, kembalikan ke konveyor untuk lanjut ke PROSES SELANJUTNYA
                         if (prod.workElapsed >= stn.std_time) {{
                             prod.currentProcessStep++;
                             if (prod.currentProcessStep >= uniqueProcesses.length) {{
