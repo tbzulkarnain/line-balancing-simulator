@@ -6,21 +6,21 @@ import math
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
 st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
-st.caption("Simulasi lini riil: Target Pasang/Jam, Auto-Stop 1 Jam, Dual Balancing Rate (Pabrik & Yamazumi), & Produktivitas.")
+st.caption("Real-time line simulation: Target Demand/Hour, 1-Hour Auto-Stop, IE Metrics, & Productivity.")
 
-# --- KONTROL PARAMETER DI ATAS (TARGET PASANG/JAM) ---
-st.markdown("### ⚙️ Parameter Lini Produksi")
+# --- PRODUCTION PARAMETERS ---
+st.markdown("### ⚙️ Production Line Parameters")
 col_p1, col_p2 = st.columns(2)
 with col_p1:
-    target_demand_per_hour = st.number_input("Target Production (Pasang/Jam)", value=50, step=5, key="input_demand_hour")
+    target_demand_per_hour = st.number_input("Target Production (Pairs/Hour)", value=50, step=5, key="input_demand_hour")
 
 takt_time_sec = 3600 / target_demand_per_hour if target_demand_per_hour > 0 else 0
-st.info(f"⏱️ **Takt Time Target Lini**: {takt_time_sec:.2f} detik/pasang (Simulasi berjalan untuk durasi 1 Jam / 3600 Detik)")
+st.info(f"⏱️ **Target Takt Time**: {takt_time_sec:.2f} seconds/pair (Simulation runs for 1 Hour / 3600 Seconds)")
 
-# --- STEP 1: TABEL INPUT TUNGGAL ---
+# --- STEP 1: SINGLE INPUT TABLE ---
 st.markdown("---")
-st.subheader("1. Data Input Proses & Pengaturan Actual MP")
-st.write("Masukkan Nama Proses, CT Base, dan Allowance. Kolom **Actual MP** terisi otomatis (pembulatan ke atas) dan dapat disesuaikan langsung.")
+st.subheader("1. Process Input Data & Actual MP Configuration")
+st.write("Enter Process Name, Base CT, and Allowance. **Actual MP** auto-calculates (rounded up) and can be adjusted manually.")
 
 if "line_data" not in st.session_state:
     st.session_state.line_data = pd.DataFrame({
@@ -40,7 +40,7 @@ edited_df = st.data_editor(
     num_rows="dynamic",
     use_container_width=True,
     column_config={
-        "Nama Proses": st.column_config.TextColumn("Nama Proses", required=True),
+        "Nama Proses": st.column_config.TextColumn("Process Name", required=True),
         "Cycle Time Base (s)": st.column_config.NumberColumn("CT Base (s)", min_value=0.1, format="%.2f"),
         "Allowance (%)": st.column_config.NumberColumn("Allowance (%)", min_value=0.0, max_value=100.0, format="%.1f"),
         "Standard Time (s)": st.column_config.NumberColumn("Standard Time (s)", format="%.2f", disabled=True),
@@ -55,37 +55,37 @@ if not edited_df.empty and takt_time_sec > 0:
     df = edited_df.copy()
     df["Effective CT (s)"] = df["Standard Time (s)"] / df["Actual MP"]
     
-    # 1. Perhitungan MP Balancing Rate ala Pabrik (Total Teoretis MP / Total Actual MP)
+    # 1. Manpower Utilization (Theoretical MP / Actual MP)
     df["Theoretical MP"] = df["Standard Time (s)"] / takt_time_sec
     total_theo_mp = df["Theoretical MP"].sum()
     total_actual_mp = df["Actual MP"].sum()
-    mp_balancing_rate = (total_theo_mp / total_actual_mp) * 100 if total_actual_mp > 0 else 0
+    mp_utilization = (total_theo_mp / total_actual_mp) * 100 if total_actual_mp > 0 else 0
 
-    # 2. Perhitungan Bottleneck & Line Efficiency Yamazumi (CT-based)
+    # 2. Bottleneck & Line Efficiency (Yamazumi / CT-based Balancing Rate)
     max_ct = df["Effective CT (s)"].max()
     bottleneck_idx = df["Effective CT (s)"].idxmax()
     bottleneck_process = df.loc[bottleneck_idx, "Nama Proses"]
     
     total_effective_ct = df["Effective CT (s)"].sum()
     num_stations = len(df)
-    yamazumi_balancing_rate = (total_effective_ct / (max_ct * num_stations)) * 100
+    line_efficiency = (total_effective_ct / (max_ct * num_stations)) * 100
 
-    # 3. Produktivitas Tenaga Kerja (Labor Productivity)
+    # 3. Labor Productivity
     labor_productivity = target_demand_per_hour / total_actual_mp if total_actual_mp > 0 else 0
 
-    # METRICS SUMMARY (5 Kolom Ringkasan)
+    # METRICS SUMMARY (5 Columns)
     st.markdown("---")
     col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
-    col_m1.metric("🎯 MP Balancing (Pabrik)", f"{mp_balancing_rate:.1f}%")
-    col_m2.metric("📊 Line Efficiency (CT)", f"{yamazumi_balancing_rate:.1f}%")
-    col_m3.metric("🚨 Bottleneck", f"{bottleneck_process}", delta=f"{max_ct:.1f} s/pasang", delta_color="inverse")
-    col_m4.metric("👥 Total MP", f"{total_actual_mp} Orang")
-    col_m5.metric("⚡ Produktivitas", f"{labor_productivity:.2f} Pas/Org/Jam")
+    col_m1.metric("🎯 MP Utilization", f"{mp_utilization:.1f}%")
+    col_m2.metric("📊 Line Efficiency", f"{line_efficiency:.1f}%")
+    col_m3.metric("🚨 Bottleneck", f"{bottleneck_process}", delta=f"{max_ct:.1f} s/pair", delta_color="inverse")
+    col_m4.metric("👥 Total MP", f"{total_actual_mp} Persons")
+    col_m5.metric("⚡ Productivity", f"{labor_productivity:.2f} Pairs/P/H")
 
-    # --- STEP 2: ANIMASI KANVAS DENGAN AUTO-STOP 1 JAM (3600s) ---
+    # --- STEP 2: CANVAS ANIMATION WITH 1-HOUR AUTO-STOP ---
     st.markdown("---")
-    st.subheader("2. 🎬 Simulasi Lini Produksi Sepatu (One-Piece Flow)")
-    st.caption("Simulasi berjalan selama 1 Jam (3600 Detik) dan berhenti otomatis (Auto-Stop).")
+    st.subheader("2. 🎬 Shoe Production Line Simulation (One-Piece Flow)")
+    st.caption("Simulation runs for 1 Hour (3600 Seconds) and automatically stops (Auto-Stop).")
 
     line_stations = []
     global_station_index = 0
@@ -122,7 +122,7 @@ if not edited_df.empty and takt_time_sec > 0:
     stations_json = json.dumps(flat_stations)
     takt_val = float(takt_time_sec)
 
-    speed_multiplier = st.slider("⚡ Kecepatan Simulasi (Multiplier)", min_value=1.0, max_value=50.0, value=20.0, step=1.0, key="speed_slider_bottom")
+    speed_multiplier = st.slider("⚡ Simulation Speed (Multiplier)", min_value=1.0, max_value=50.0, value=20.0, step=1.0, key="speed_slider_bottom")
     current_speed = float(speed_multiplier)
 
     html_code = f"""
@@ -190,7 +190,7 @@ if not edited_df.empty and takt_time_sec > 0:
     </head>
     <body>
         <div id="canvas-container">
-            <h4 id="timer-display" style="margin: 0 0 6px 0; color: #1e293b; font-size: 14px;">⏱️ Waktu Simulasi: 0.0s / 3600.0s (1 Jam)</h4>
+            <h4 id="timer-display" style="margin: 0 0 6px 0; color: #1e293b; font-size: 14px;">⏱️ Simulation Time: 0.0s / 3600.0s (1 Hour)</h4>
             <canvas id="simCanvas" width="1040" height="260"></canvas>
             <div class="panel">
                 <div class="controls">
@@ -350,7 +350,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 ctx.fillStyle = "#111827";
                 ctx.font = "bold 11px Arial";
                 ctx.textAlign = "left";
-                ctx.fillText("📦 Total Output 1 Jam: " + finishedCount + " Pasang   |   🔄 Total WIP di Lini: " + totalWipInLine + " Pasang" + (isFinished ? " — ✅ SELESAI (1 JAM)" : ""), 10, 252);
+                ctx.fillText("📦 Total Output (1h): " + finishedCount + " Pairs   |   🔄 Total Line WIP: " + totalWipInLine + " Pairs" + (isFinished ? " — ✅ COMPLETED (1 HOUR)" : ""), 10, 252);
             }}
 
             function update(timestamp) {{
@@ -368,7 +368,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     isRunning = false;
                     isFinished = true;
                     drawScene();
-                    timerDisplay.innerText = "⏱️ Waktu Simulasi: 3600.0s / 3600.0s (1 Jam Selesai!) 🎉";
+                    timerDisplay.innerText = "⏱️ Simulation Time: 3600.0s / 3600.0s (1 Hour Completed!) 🎉";
                     return;
                 }}
 
@@ -458,7 +458,7 @@ if not edited_df.empty and takt_time_sec > 0:
 
                 products = products.filter(p => p.status !== 'finished');
 
-                timerDisplay.innerText = "⏱️ Waktu Simulasi: " + timeElapsed.toFixed(1) + "s / 3600.0s (Kecepatan: " + speedMultiplier + "x)";
+                timerDisplay.innerText = "⏱️ Simulation Time: " + timeElapsed.toFixed(1) + "s / 3600.0s (Speed: " + speedMultiplier + "x)";
                 
                 drawScene();
                 animationId = requestAnimationFrame(update);
@@ -486,7 +486,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 products = [];
                 isFinished = false;
                 lastTimestamp = null;
-                timerDisplay.innerText = "⏱️ Waktu Simulasi: 0.0s / 3600.0s (1 Jam)";
+                timerDisplay.innerText = "⏱️ Simulation Time: 0.0s / 3600.0s (1 Hour)";
                 drawScene();
             }}
 
@@ -500,7 +500,7 @@ if not edited_df.empty and takt_time_sec > 0:
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
-    st.subheader("3. Yamazumi Chart (Analisis Effective CT vs Takt Time)")
+    st.subheader("3. Yamazumi Chart (Effective CT vs Takt Time Analysis)")
     
     import plotly.graph_objects as go
     fig_bar = go.Figure()
@@ -518,31 +518,31 @@ if not edited_df.empty and takt_time_sec > 0:
         y=takt_time_sec, 
         line_dash="dash", 
         line_color="red", 
-        annotation_text=f"Takt Time Target ({takt_time_sec:.1f}s)"
+        annotation_text=f"Target Takt Time ({takt_time_sec:.1f}s)"
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_dual_balancing")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_english_metrics")
 
-    # --- STEP 4: ANALISIS TEKNIK INDUSTRI (IE) OTOMATIS ---
+    # --- STEP 4: INDUSTRIAL ENGINEERING (IE) AUTOMATED ANALYSIS ---
     st.markdown("---")
-    st.subheader("📋 4. Analisis & Evaluasi Teknik Industri (Industrial Engineering)")
+    st.subheader("📋 4. Industrial Engineering (IE) Evaluation & Analysis")
     
     st.markdown(f"""
-    Berdasarkan konfigurasi lini dan hasil simulasi berdurasi 1 jam, berikut adalah evaluasi performa lini produksi sepatu Anda:
+    Based on the line configuration and the 1-hour simulation run, here is the performance evaluation of your footwear production line:
     
-    1. **Evaluasi Target vs Kapasitas Aktual**:
-       * **Target Demand**: `{target_demand_per_hour} Pasang/Jam` (Takt Time: `{takt_time_sec:.2f} detik`).
-       * **Analisis Kesenjangan**: Selisih antara target teoretis dan output nyata di lantai produksi disebabkan oleh **Line Balancing Loss**, waktu muat awal lini (*filling time*), serta fenomena *blocking* dan *starving* antar stasiun estafet murni (*One-Piece Flow*). Produk yang masih tertahan sebagai WIP di akhir jam ke-1 membuktikan adanya hambatan aliran mikro.
+    1. **Target vs Actual Capacity Evaluation**:
+       * **Target Demand**: `{target_demand_per_hour} Pairs/Hour` (Takt Time: `{takt_time_sec:.2f} seconds`).
+       * **Gap Analysis**: The variance between the theoretical target and actual shop-floor output is driven by **Line Balancing Loss**, initial line filling time (*start-up losses*), and discrete event phenomena like *blocking* and *starving* within a pure *One-Piece Flow* conveyor layout. WIP remaining inside the line at 3600s indicates micro-stoppages.
     
-    2. **Identifikasi Proses Kritis (Bottleneck)**:
-       * Proses **`{bottleneck_process}`** bertindak sebagai pembatas utama laju produksi dengan *Effective Cycle Time* sebesar **`{max_ct:.2f} detik`**. 
-       * *Rekomendasi IE*: Jika Anda ingin mendongkrak output mendekati target penuh, pertimbangkan untuk menambah operator (*Actual MP*) atau memperbaiki metode kerja (*method study*) khusus pada proses `{bottleneck_process}` ini.
+    2. **Critical Process Identification (Bottleneck)**:
+       * Process **`{bottleneck_process}`** acts as the primary constraint of the production line with an *Effective Cycle Time* of **`{max_ct:.2f} seconds`**.
+       * *IE Recommendation*: To close the gap toward full target fulfillment, consider adding operators (*Actual MP*) or performing a *method study* to optimize the work cycle specifically at `{bottleneck_process}`.
     
-    3. **Indikator Efisiensi & Produktivitas Tenaga Kerja**:
-       * **Total Manpower (MP Aktual)**: `{total_actual_mp} Orang`
-       * **Total MP Teoretis**: `{total_theo_mp:.2f} Orang`
-       * **MP Balancing Rate (Standar Pabrik)**: **`{mp_balancing_rate:.1f}%`** *(Dihitung dari Total Teoretis MP ÷ Total Actual MP. Semakin tinggi/mendekati 100%, semakin efisien alokasi tenaga kerja).*
-       * **Line Efficiency (Standar Yamazumi / CT)**: **`{yamazumi_balancing_rate:.1f}%`** *(Mengukur kesetimbangan waktu antar stasiun).*
-       * **Produktivitas Tenaga Kerja**: **`{labor_productivity:.2f} Pasang/Orang/Jam`** *(Rata-rata output yang dihasilkan tiap 1 orang pekerja dalam 1 jam).*
+    3. **Labor Efficiency & Productivity Indicators**:
+       * **Total Actual Manpower (MP)**: `{total_actual_mp} Persons`
+       * **Total Theoretical Manpower**: `{total_theo_mp:.2f} Persons`
+       * **Manpower Utilization**: **`{mp_utilization:.1f}%`** *(Calculated as Theoretical MP ÷ Actual MP. Higher percentage means better workforce alignment).*
+       * **Line Efficiency (Yamazumi / CT-based)**: **`{line_efficiency:.1f}%`** *(Measures cycle time balance across all stations).*
+       * **Labor Productivity**: **`{labor_productivity:.2f} Pairs/Person/Hour`** *(Average output generated per worker per hour).*
     """)
