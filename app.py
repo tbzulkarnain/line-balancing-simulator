@@ -6,7 +6,7 @@ import math
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
 st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
-st.caption("Simulasi lini riil: Konfigurasi tabel tunggal yang praktis, perhitungan MP otomatis, dan animasi proporsional.")
+st.caption("Simulasi lini riil: Konveyor dirapatkan, ukuran diperkecil agar tombol kontrol selalu terlihat di layar.")
 
 # --- KONTROL DI LAYAR UTAMA (TANPA SIDEBAR) ---
 st.markdown("### ⚙️ Parameter & Kontrol Lini Produksi")
@@ -26,7 +26,6 @@ st.markdown("---")
 st.subheader("1. Data Input Proses & Pengaturan Actual MP")
 st.write("Masukkan Nama Proses, CT Base, dan Allowance. Kolom **Actual MP** terisi otomatis (pembulatan ke atas) dan dapat Anda sesuaikan langsung di tabel ini.")
 
-# Inisialisasi state dataframe jika belum ada
 if "line_data" not in st.session_state:
     st.session_state.line_data = pd.DataFrame({
         "Nama Proses": ["st collar lining", "st tip", "st counter", "hotmelt", "st margin", "punching", "insert lace"],
@@ -34,7 +33,6 @@ if "line_data" not in st.session_state:
         "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
     })
 
-# Hitung Standard Time dan Rekomendasi MP Otomatis
 temp_df = st.session_state.line_data.copy()
 temp_df["Standard Time (s)"] = temp_df["Cycle Time Base (s)"] * (1 + temp_df["Allowance (%)"] / 100)
 temp_df["Auto MP"] = temp_df["Standard Time (s)"].apply(lambda st_val: max(1, math.ceil(st_val / takt_time_sec)) if takt_time_sec > 0 else 1)
@@ -56,7 +54,6 @@ edited_df = st.data_editor(
     key="single_input_table"
 )
 
-# Simpan kembali ke session state
 st.session_state.line_data = edited_df[["Nama Proses", "Cycle Time Base (s)", "Allowance (%)", "Actual MP"]]
 
 if not edited_df.empty and takt_time_sec > 0:
@@ -79,10 +76,10 @@ if not edited_df.empty and takt_time_sec > 0:
     col_m3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col_m4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI KANVAS (UKURAN KOMPAK) ---
+    # --- STEP 2: ANIMASI KANVAS (UKURAN KOMPAK & TOMBOL DIJAMIN KELIHATAN) ---
     st.markdown("---")
     st.subheader("2. 🎬 Simulasi Lini Produksi Sepatu (One-Piece Flow)")
-    st.caption("Visualisasi lini dengan skala responsif agar tombol kontrol di bawahnya selalu terlihat.")
+    st.caption("Visualisasi ringkas dengan konveyor tipis dan jarak rapat agar tombol kontrol di bawahnya selalu terlihat.")
 
     line_stations = []
     global_station_index = 0
@@ -129,18 +126,18 @@ if not edited_df.empty and takt_time_sec > 0:
                 font-family: Arial, sans-serif;
                 background-color: #e8f5e9;
                 margin: 0;
-                padding: 5px;
+                padding: 2px;
                 text-align: center;
             }}
             #canvas-container {{
                 background: #ffffff;
                 border: 2px solid #a5d6a7;
-                border-radius: 10px;
-                padding: 10px;
+                border-radius: 8px;
+                padding: 8px;
                 display: inline-block;
                 box-shadow: 0 4px 6px rgba(0,0,0,0.08);
                 width: 100%;
-                max-width: 1100px;
+                max-width: 1080px;
                 box-sizing: border-box;
             }}
             canvas {{
@@ -150,24 +147,24 @@ if not edited_df.empty and takt_time_sec > 0:
                 height: auto;
             }}
             .panel {{
-                margin-top: 10px;
+                margin-top: 6px;
                 display: flex;
                 justify-content: center;
                 align-items: center;
-                gap: 15px;
+                gap: 12px;
                 flex-wrap: wrap;
             }}
             .controls {{
                 display: flex;
-                gap: 10px;
+                gap: 8px;
             }}
             button {{
                 background-color: #2563eb;
                 color: white;
                 border: none;
-                padding: 8px 16px;
-                font-size: 14px;
-                border-radius: 6px;
+                padding: 6px 14px;
+                font-size: 13px;
+                border-radius: 5px;
                 cursor: pointer;
                 font-weight: bold;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -185,8 +182,8 @@ if not edited_df.empty and takt_time_sec > 0:
     </head>
     <body>
         <div id="canvas-container">
-            <h4 id="timer-display" style="margin: 0 0 8px 0; color: #1e293b; font-size: 16px;">⏱️ Waktu Aktual: 0.0 Detik | Takt Time: {takt_val:.1f}s</h4>
-            <canvas id="simCanvas" width="1080" height="420"></canvas>
+            <h4 id="timer-display" style="margin: 0 0 6px 0; color: #1e293b; font-size: 14px;">⏱️ Waktu Aktual: 0.0 Detik | Takt Time: {takt_val:.1f}s</h4>
+            <canvas id="simCanvas" width="1060" height="320"></canvas>
             <div class="panel">
                 <div class="controls">
                     <button onclick="startSimulation()">▶ Play</button>
@@ -210,10 +207,10 @@ if not edited_df.empty and takt_time_sec > 0:
             let isRunning = false;
 
             const nStations = stations.length;
-            const colSpacing = (canvas.width - 50) / Math.max(1, nStations);
-            const tableWidth = Math.max(16, Math.min(38, colSpacing * 0.75));
-            const tableHeight = Math.max(32, Math.min(52, tableWidth * 1.4));
-            const fontSize = Math.max(8, Math.min(10, Math.floor(10 * (10 / Math.max(10, nStations)))));
+            const colSpacing = (canvas.width - 40) / Math.max(1, nStations);
+            const tableWidth = Math.max(14, Math.min(34, colSpacing * 0.7));
+            const tableHeight = Math.max(28, Math.min(46, tableWidth * 1.3));
+            const fontSize = Math.max(8, Math.min(10, Math.floor(9 * (10 / Math.max(10, nStations)))));
 
             let products = [];
             let finishedCount = 0;
@@ -222,30 +219,31 @@ if not edited_df.empty and takt_time_sec > 0:
 
             function getStationCoords(i) {{
                 let isTop = (i % 2 === 0);
-                let x = 25 + i * colSpacing + (colSpacing / 2);
-                let tableY = isTop ? 115 : 305;
+                let x = 20 + i * colSpacing + (colSpacing / 2);
+                // Konveyor tipis di tengah (Y: 135 s.d 185), meja dirapatkan dekat konveyor
+                let tableY = isTop ? 92 : 228;
                 return {{ x: x, tableY: tableY, isTop: isTop }};
             }}
 
             function drawScene() {{
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // 1. Konveyor Tengah Memanjang (Y: 180 s.d 235)
+                // 1. Konveyor Tengah Dikecilkan (Y: 135 s.d 185)
                 ctx.fillStyle = "#f1f8e9";
                 ctx.strokeStyle = "#1f2937";
-                ctx.lineWidth = 2;
-                ctx.fillRect(15, 180, canvas.width - 30, 55);
-                ctx.strokeRect(15, 180, canvas.width - 30, 55);
+                ctx.lineWidth = 1.8;
+                ctx.fillRect(10, 135, canvas.width - 20, 50);
+                ctx.strokeRect(10, 135, canvas.width - 20, 50);
 
                 ctx.strokeStyle = "#94a3b8";
-                ctx.setLineDash([6, 6]);
+                ctx.setLineDash([5, 5]);
                 ctx.beginPath();
-                ctx.moveTo(15, 207.5);
-                ctx.lineTo(canvas.width - 15, 207.5);
+                ctx.moveTo(10, 160);
+                ctx.lineTo(canvas.width - 10, 160);
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // 2. Gambar Meja & Operator Sisi Atas dan Bawah
+                // 2. Gambar Meja & Operator Rapat
                 stations.forEach(function(stn, i) {{
                     let pos = getStationCoords(i);
                     let x = pos.x;
@@ -255,38 +253,38 @@ if not edited_df.empty and takt_time_sec > 0:
                     ctx.fillStyle = stn.is_bottleneck ? "#dc2626" : "#2563eb";
                     ctx.fillRect(x - tableWidth/2, tableY - tableHeight/2, tableWidth, tableHeight);
                     ctx.strokeStyle = "#ffffff";
-                    ctx.lineWidth = 1.5;
+                    ctx.lineWidth = 1.2;
                     ctx.strokeRect(x - tableWidth/2, tableY - tableHeight/2, tableWidth, tableHeight);
 
                     ctx.textAlign = "center";
                     if (isTop) {{
                         ctx.fillStyle = "#111827";
                         ctx.font = "bold " + fontSize + "px Arial";
-                        ctx.fillText(stn.display_name, x, tableY - tableHeight/2 - 20);
+                        ctx.fillText(stn.display_name, x, tableY - tableHeight/2 - 15);
 
                         ctx.fillStyle = "#1e293b";
                         ctx.font = "bold " + (fontSize - 1) + "px Arial";
-                        ctx.fillText("CT:" + stn.std_time.toFixed(1) + "s", x, tableY - tableHeight/2 - 10);
+                        ctx.fillText("CT:" + stn.std_time.toFixed(1) + "s", x, tableY - tableHeight/2 - 6);
                     }} else {{
                         ctx.fillStyle = "#1e293b";
                         ctx.font = "bold " + (fontSize - 1) + "px Arial";
-                        ctx.fillText("CT:" + stn.std_time.toFixed(1) + "s", x, tableY + tableHeight/2 + 12);
+                        ctx.fillText("CT:" + stn.std_time.toFixed(1) + "s", x, tableY + tableHeight/2 + 9);
 
                         ctx.fillStyle = "#111827";
                         ctx.font = "bold " + fontSize + "px Arial";
-                        ctx.fillText(stn.display_name, x, tableY + tableHeight/2 + 22);
+                        ctx.fillText(stn.display_name, x, tableY + tableHeight/2 + 18);
                     }}
 
-                    let opX = x - (tableWidth/2 + 8);
+                    let opX = x - (tableWidth/2 + 7);
                     ctx.fillStyle = "#000000";
                     ctx.beginPath();
-                    ctx.arc(opX, tableY, Math.max(5, tableWidth/3.5), 0, Math.PI * 2);
+                    ctx.arc(opX, tableY, Math.max(4, tableWidth/4), 0, Math.PI * 2);
                     ctx.fill();
 
                     ctx.strokeStyle = "#000000";
-                    ctx.lineWidth = 1.8;
+                    ctx.lineWidth = 1.5;
                     ctx.beginPath();
-                    ctx.arc(opX, tableY, Math.max(8, tableWidth/2.5), Math.PI * 0.72, Math.PI * 1.28);
+                    ctx.arc(opX, tableY, Math.max(7, tableWidth/2.8), Math.PI * 0.72, Math.PI * 1.28);
                     ctx.stroke();
 
                     let waitingCount = products.filter(p => p.currentStationIdx === i && p.status === 'queued').length;
@@ -296,57 +294,57 @@ if not edited_df.empty and takt_time_sec > 0:
                     if (totalHold > 0) {{
                         ctx.fillStyle = waitingCount > 0 ? "#b91c1c" : "#047857";
                         ctx.beginPath();
-                        ctx.roundRect(x + (tableWidth/2 + 2), tableY - 12, 24, 12, 3);
+                        ctx.roundRect(x + (tableWidth/2 + 2), tableY - 10, 22, 12, 3);
                         ctx.fill();
                         ctx.fillStyle = "#ffffff";
                         ctx.font = "bold 8px Arial";
-                        ctx.fillText("👟" + totalHold, x + (tableWidth/2 + 14), tableY - 3);
+                        ctx.fillText("👟" + totalHold, x + (tableWidth/2 + 13), tableY - 2);
                     }}
                 }});
 
-                // 3. Gambar Produk Pasang Sepatu (👟) di Konveyor
+                // 3. Gambar Produk Pasang Sepatu (👟) di Konveyor Tipis
                 products.forEach(function(prod) {{
                     if (prod.status === 'conveyor' || prod.status === 'queued') {{
                         ctx.fillStyle = prod.status === 'queued' ? "#fee2e2" : "#ffffff";
                         ctx.strokeStyle = prod.status === 'queued' ? "#dc2626" : "#1f2937";
-                        ctx.lineWidth = 1.5;
+                        ctx.lineWidth = 1.2;
                         ctx.beginPath();
-                        ctx.roundRect(prod.x - 10, 196, 20, 20, 3);
+                        ctx.roundRect(prod.x - 9, 150, 18, 18, 3);
                         ctx.fill();
                         ctx.stroke();
 
-                        ctx.font = "11px Arial";
+                        ctx.font = "10px Arial";
                         ctx.textAlign = "center";
-                        ctx.fillText("👟", prod.x, 211);
+                        ctx.fillText("👟", prod.x, 163);
                     }} else if (prod.status === 'working') {{
                         let pos = getStationCoords(prod.currentStationIdx);
                         let stn = stations[prod.currentStationIdx];
 
                         ctx.fillStyle = "#fef3c7";
                         ctx.strokeStyle = "#d97706";
-                        ctx.lineWidth = 1.5;
+                        ctx.lineWidth = 1.2;
                         ctx.beginPath();
-                        ctx.roundRect(pos.x - 10, pos.tableY - 10, 20, 20, 3);
+                        ctx.roundRect(pos.x - 9, pos.tableY - 9, 18, 18, 3);
                         ctx.fill();
                         ctx.stroke();
 
-                        ctx.font = "11px Arial";
+                        ctx.font = "10px Arial";
                         ctx.textAlign = "center";
-                        ctx.fillText("👟", pos.x, pos.tableY + 4);
+                        ctx.fillText("👟", pos.x, pos.tableY + 3);
 
                         let prog = Math.min(100, (prod.workElapsed / stn.std_time) * 100);
                         ctx.fillStyle = "#1e293b";
-                        ctx.fillRect(pos.x - 12, pos.tableY + 11, 24, 3);
+                        ctx.fillRect(pos.x - 10, pos.tableY + 10, 20, 3);
                         ctx.fillStyle = "#10b981";
-                        ctx.fillRect(pos.x - 12, pos.tableY + 11, 24 * (prog / 100), 3);
+                        ctx.fillRect(pos.x - 10, pos.tableY + 10, 20 * (prog / 100), 3);
                     }}
                 }});
 
                 let totalWipInLine = products.length;
                 ctx.fillStyle = "#111827";
-                ctx.font = "bold 12px Arial";
+                ctx.font = "bold 11px Arial";
                 ctx.textAlign = "left";
-                ctx.fillText("📦 Total Output Selesai: " + finishedCount + " Pasang   |   🔄 Total WIP di Lini: " + totalWipInLine + " Pasang", 20, 405);
+                ctx.fillText("📦 Total Output Selesai: " + finishedCount + " Pasang   |   🔄 Total WIP di Lini: " + totalWipInLine + " Pasang", 15, 312);
             }}
 
             function update(timestamp) {{
@@ -364,7 +362,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     spawnTimer = 0;
                     products.push({{
                         id: Math.random(),
-                        x: 20,
+                        x: 15,
                         status: 'conveyor',
                         currentProcessStep: 0,
                         currentStationIdx: -1,
@@ -385,7 +383,7 @@ if not edited_df.empty and takt_time_sec > 0:
                             prod.currentStationIdx = availableStation.idx;
                             let targetPos = getStationCoords(availableStation.idx);
                             
-                            if (Math.abs(prod.x - targetPos.x) <= 4) {{
+                            if (Math.abs(prod.x - targetPos.x) <= 3) {{
                                 prod.x = targetPos.x;
                                 prod.status = 'working';
                                 prod.workElapsed = 0;
@@ -405,8 +403,8 @@ if not edited_df.empty and takt_time_sec > 0:
                                 }}
                             }}
 
-                            let stopX = targetPos.x - (aheadCount * 22) - 20;
-                            if (stopX < 20) stopX = 20;
+                            let stopX = targetPos.x - (aheadCount * 20) - 15;
+                            if (stopX < 15) stopX = 15;
 
                             if (prod.x < stopX) {{
                                 prod.x += 100 * adjustedDelta;
@@ -481,7 +479,7 @@ if not edited_df.empty and takt_time_sec > 0:
     </html>
     """
 
-    st.components.v1.html(html_code, height=480, scrolling=False)
+    st.components.v1.html(html_code, height=370, scrolling=False)
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
@@ -507,4 +505,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_single_table")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_compact_view")
