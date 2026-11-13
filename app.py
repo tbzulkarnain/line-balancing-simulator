@@ -124,10 +124,10 @@ if not edited_df.empty and takt_time_sec > 0:
     row2_c2.metric("⚡ Labor Productivity", f"{labor_productivity:.1f} Pairs/P/H")
     row2_c3.metric("💰 Labor Cost / Pair", f"${labor_cost_per_pair_usd:,.2f} USD")
 
-    # --- STEP 2: CANVAS ANIMATION DENGAN PERGERAKAN DARI CVY KE OPERATOR ---
+    # --- STEP 2: CANVAS ANIMATION DENGAN DISTRIBUSI OPERATOR PARALEL ---
     st.markdown("---")
     st.subheader("2. 🎬 Shoe Production Line Simulation (One-Piece Flow)")
-    st.caption("Simulation runs for 1 Hour (3600 Seconds). Visualizes shoe transfer motion from conveyor to operator workstation and back.")
+    st.caption("Simulation runs for 1 Hour (3600 Seconds). Shoes move along the conveyor and distribute smoothly to all available operators in parallel.")
 
     line_stations = []
     global_station_index = 0
@@ -415,7 +415,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     }}
                 }});
 
-                // Render posisi sepatu (mendukung perpindahan mulus dari konveyor ke operator & kembali)
+                // Render posisi sepatu
                 window.simState.products.forEach(function(prod) {{
                     ctx.fillStyle = prod.status === 'queued' ? "#fee2e2" : "#ffffff";
                     ctx.strokeStyle = prod.status === 'queued' ? "#dc2626" : "#1f2937";
@@ -483,20 +483,23 @@ if not edited_df.empty and takt_time_sec > 0:
                     }});
                 }}
 
+                // Kelompokkan stasiun berdasarkan nama proses (mendukung multi-operator per proses)
                 let uniqueProcesses = [...new Set(stations.map(s => s.process_name))];
 
                 window.simState.products.forEach(function(prod, idx) {{
                     if (prod.status === 'conveyor' || prod.status === 'queued') {{
                         let targetProcName = uniqueProcesses[prod.currentProcessStep];
+                        
+                        // Cari semua sub-stasiun untuk proses saat ini
                         let candidateStations = stations.map((s, i) => Object.assign({{}}, s, {{ idx: i }})).filter(s => s.process_name === targetProcName);
                         
+                        // Cari sub-stasiun yang sedang kosong (tidak sedang working, fetching, atau returning)
                         let availableStation = candidateStations.find(cs => !window.simState.products.some(p => p.currentStationIdx === cs.idx && (p.status === 'working' || p.status === 'fetching' || p.status === 'returning')));
 
                         if (availableStation) {{
                             prod.currentStationIdx = availableStation.idx;
                             let targetPos = getStationCoords(availableStation.idx);
                             
-                            // Animasi perpindahan dari konveyor ke meja operator (Fetching)
                             let targetX = targetPos.x;
                             let targetY = targetPos.tableY;
 
@@ -523,6 +526,7 @@ if not edited_df.empty and takt_time_sec > 0:
                                 }}
                             }}
                         }} else {{
+                            // Jika semua operator pada proses ini sedang sibuk, produk antre di konveyor mendekati stasiun pertama proses tersebut
                             let firstStationOfProc = candidateStations[0];
                             let targetPos = getStationCoords(firstStationOfProc.idx);
                             
@@ -536,7 +540,7 @@ if not edited_df.empty and takt_time_sec > 0:
                             let stopX = targetPos.x - (aheadCount * 18) - 12;
                             if (stopX < 12) stopX = 12;
 
-                            prod.y = 130; // Tetap di jalur konveyor
+                            prod.y = 130;
                             if (prod.x < stopX) {{
                                 prod.x += 100 * adjustedDelta;
                                 if (prod.x >= stopX) {{
@@ -562,14 +566,13 @@ if not edited_df.empty and takt_time_sec > 0:
                                 window.simState.finishedCount++;
                                 prod.status = 'finished';
                             }} else {{
-                                // Pindahkan kembali dari meja operator ke konveyor (Returning)
                                 prod.status = 'returning';
                             }}
                         }}
                     }} else if (prod.status === 'returning') {{
                         let currentPos = getStationCoords(prod.currentStationIdx);
                         let targetX = currentPos.x;
-                        let targetY = 130; // Kembali ke jalur konveyor utama
+                        let targetY = 130;
 
                         let dx = targetX - prod.x;
                         let dy = targetY - prod.y;
@@ -733,7 +736,7 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v7")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v8")
 
     # --- STEP 4: INDUSTRIAL ENGINEERING (IE) EXECUTIVE SUMMARY ---
     st.markdown("---")
