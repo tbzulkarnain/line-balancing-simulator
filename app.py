@@ -6,27 +6,24 @@ import math
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
 st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
-st.caption("Simulasi lini riil: Actual MP otomatis memperbarui diri saat target produksi atau waktu kerja diubah.")
+st.caption("Simulasi lini riil: Teks nama proses diperjelas, dan slider kecepatan dipindah ke bawah animasi.")
 
-# --- KONTROL DI LAYAR UTAMA (TANPA SIDEBAR) ---
-st.markdown("### ⚙️ Parameter & Kontrol Lini Produksi")
-col_p1, col_p2, col_p3 = st.columns(3)
+# --- KONTROL PARAMETER DI ATAS (WAKTU & TARGET) ---
+st.markdown("### ⚙️ Parameter Lini Produksi")
+col_p1, col_p2 = st.columns(2)
 with col_p1:
     available_time_min = st.number_input("Waktu Kerja Efektif (Menit/Shift)", value=480, step=10, key="input_time")
 with col_p2:
     target_demand = st.number_input("Target Production (Pasang/Shift)", value=400, step=10, key="input_demand")
-with col_p3:
-    speed_multiplier = st.slider("⚡ Kecepatan Simulasi (Multiplier)", min_value=1.0, max_value=20.0, value=5.0, step=0.5)
 
 takt_time_sec = (available_time_min * 60) / target_demand if target_demand > 0 else 0
 st.info(f"⏱️ **Takt Time Target Lini**: {takt_time_sec:.2f} detik/pasang")
 
-# --- STEP 1: TABEL INPUT TUNGGAL (PROSES, CT, ALLOWANCE, & ACTUAL MP) ---
+# --- STEP 1: TABEL INPUT TUNGGAL ---
 st.markdown("---")
 st.subheader("1. Data Input Proses & Pengaturan Actual MP")
-st.write("Masukkan Nama Proses, CT Base, dan Allowance. Kolom **Actual MP** akan otomatis menghitung ulang (pembulatan ke atas) setiap kali Target Produksi atau Waktu Kerja diubah.")
+st.write("Masukkan Nama Proses, CT Base, dan Allowance. Kolom **Actual MP** terisi otomatis (pembulatan ke atas) dan dapat disesuaikan langsung.")
 
-# Inisialisasi session state untuk data tabel dan pelacak parameter
 if "line_data" not in st.session_state:
     st.session_state.line_data = pd.DataFrame({
         "Nama Proses": ["st collar lining", "st tip", "st counter", "hotmelt", "st margin", "punching", "insert lace"],
@@ -41,7 +38,6 @@ temp_df = st.session_state.line_data.copy()
 temp_df["Standard Time (s)"] = temp_df["Cycle Time Base (s)"] * (1 + temp_df["Allowance (%)"] / 100)
 temp_df["Auto MP"] = temp_df["Standard Time (s)"].apply(lambda st_val: max(1, math.ceil(st_val / takt_time_sec)) if takt_time_sec > 0 else 1)
 
-# Jika Takt Time berubah (karena target/waktu kerja diganti), paksa Actual MP ikut memperbarui diri secara otomatis
 if abs(st.session_state.prev_takt_time - takt_time_sec) > 1e-5:
     temp_df["Actual MP"] = temp_df["Auto MP"]
     st.session_state.prev_takt_time = takt_time_sec
@@ -84,10 +80,10 @@ if not edited_df.empty and takt_time_sec > 0:
     col_m3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col_m4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI KANVAS ---
+    # --- STEP 2: ANIMASI KANVAS DENGAN KONTROL DI BAWAH ---
     st.markdown("---")
     st.subheader("2. 🎬 Simulasi Lini Produksi Sepatu (One-Piece Flow)")
-    st.caption("Visualisasi ringkas dengan tombol kontrol yang dijamin tampil utuh di bawah.")
+    st.caption("Visualisasi lini dengan teks nama proses yang diperjelas dan slider kecepatan di bawah animasi.")
 
     line_stations = []
     global_station_index = 0
@@ -123,6 +119,9 @@ if not edited_df.empty and takt_time_sec > 0:
 
     stations_json = json.dumps(flat_stations)
     takt_val = float(takt_time_sec)
+
+    # Widget Slider Kecepatan dipindah ke bawah (di luar komponen HTML agar interaktif dengan Streamlit)
+    speed_multiplier = st.slider("⚡ Kecepatan Simulasi (Multiplier)", min_value=1.0, max_value=20.0, value=5.0, step=0.5, key="speed_slider_bottom")
     current_speed = float(speed_multiplier)
 
     html_code = f"""
@@ -191,7 +190,7 @@ if not edited_df.empty and takt_time_sec > 0:
     <body>
         <div id="canvas-container">
             <h4 id="timer-display" style="margin: 0 0 6px 0; color: #1e293b; font-size: 14px;">⏱️ Waktu Aktual: 0.0 Detik | Takt Time: {takt_val:.1f}s</h4>
-            <canvas id="simCanvas" width="1040" height="250"></canvas>
+            <canvas id="simCanvas" width="1040" height="260"></canvas>
             <div class="panel">
                 <div class="controls">
                     <button onclick="startSimulation()">▶ Play</button>
@@ -216,9 +215,11 @@ if not edited_df.empty and takt_time_sec > 0:
 
             const nStations = stations.length;
             const colSpacing = (canvas.width - 30) / Math.max(1, nStations);
-            const tableWidth = Math.max(12, Math.min(30, colSpacing * 0.7));
-            const tableHeight = Math.max(24, Math.min(38, tableWidth * 1.3));
-            const fontSize = Math.max(7, Math.min(9, Math.floor(8 * (10 / Math.max(10, nStations)))));
+            const tableWidth = Math.max(13, Math.min(32, colSpacing * 0.7));
+            const tableHeight = Math.max(26, Math.min(42, tableWidth * 1.3));
+            
+            // Ukuran font diperjelas dan diberi batas minimum agar tetap terbaca jelas
+            const fontSize = Math.max(9, Math.min(12, Math.floor(11 * (10 / Math.max(8, nStations)))));
 
             let products = [];
             let finishedCount = 0;
@@ -228,7 +229,7 @@ if not edited_df.empty and takt_time_sec > 0:
             function getStationCoords(i) {{
                 let isTop = (i % 2 === 0);
                 let x = 15 + i * colSpacing + (colSpacing / 2);
-                let tableY = isTop ? 65 : 180;
+                let tableY = isTop ? 68 : 192;
                 return {{ x: x, tableY: tableY, isTop: isTop }};
             }}
 
@@ -239,18 +240,18 @@ if not edited_df.empty and takt_time_sec > 0:
                 ctx.fillStyle = "#f1f8e9";
                 ctx.strokeStyle = "#1f2937";
                 ctx.lineWidth = 1.5;
-                ctx.fillRect(8, 100, canvas.width - 16, 45);
-                ctx.strokeRect(8, 100, canvas.width - 16, 45);
+                ctx.fillRect(8, 105, canvas.width - 16, 50);
+                ctx.strokeRect(8, 105, canvas.width - 16, 50);
 
                 ctx.strokeStyle = "#94a3b8";
                 ctx.setLineDash([4, 4]);
                 ctx.beginPath();
-                ctx.moveTo(8, 122.5);
-                ctx.lineTo(canvas.width - 8, 122.5);
+                ctx.moveTo(8, 130);
+                ctx.lineTo(canvas.width - 8, 130);
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // 2. Gambar Meja & Operator
+                // 2. Gambar Meja & Operator dengan Teks Jelas
                 stations.forEach(function(stn, i) {{
                     let pos = getStationCoords(i);
                     let x = pos.x;
@@ -265,21 +266,25 @@ if not edited_df.empty and takt_time_sec > 0:
 
                     ctx.textAlign = "center";
                     if (isTop) {{
-                        ctx.fillStyle = "#111827";
+                        // Nama Proses di atas meja (Dipertebal & Lebih Besar)
+                        ctx.fillStyle = "#0f172a";
                         ctx.font = "bold " + fontSize + "px Arial";
-                        ctx.fillText(stn.display_name, x, tableY - tableHeight/2 - 12);
+                        ctx.fillText(stn.display_name, x, tableY - tableHeight/2 - 14);
 
-                        ctx.fillStyle = "#1e293b";
+                        // CT di bawah nama proses
+                        ctx.fillStyle = "#334155";
                         ctx.font = "bold " + (fontSize - 1) + "px Arial";
                         ctx.fillText("CT:" + stn.std_time.toFixed(1) + "s", x, tableY - tableHeight/2 - 4);
                     }} else {{
-                        ctx.fillStyle = "#1e293b";
+                        // CT di atas nama proses (untuk baris bawah)
+                        ctx.fillStyle = "#334155";
                         ctx.font = "bold " + (fontSize - 1) + "px Arial";
-                        ctx.fillText("CT:" + stn.std_time.toFixed(1) + "s", x, tableY + tableHeight/2 + 8);
+                        ctx.fillText("CT:" + stn.std_time.toFixed(1) + "s", x, tableY + tableHeight/2 + 10);
 
-                        ctx.fillStyle = "#111827";
+                        // Nama Proses di bawah meja
+                        ctx.fillStyle = "#0f172a";
                         ctx.font = "bold " + fontSize + "px Arial";
-                        ctx.fillText(stn.display_name, x, tableY + tableHeight/2 + 16);
+                        ctx.fillText(stn.display_name, x, tableY + tableHeight/2 + 21);
                     }}
 
                     let opX = x - (tableWidth/2 + 6);
@@ -301,11 +306,11 @@ if not edited_df.empty and takt_time_sec > 0:
                     if (totalHold > 0) {{
                         ctx.fillStyle = waitingCount > 0 ? "#b91c1c" : "#047857";
                         ctx.beginPath();
-                        ctx.roundRect(x + (tableWidth/2 + 2), tableY - 8, 20, 10, 2);
+                        ctx.roundRect(x + (tableWidth/2 + 2), tableY - 9, 22, 11, 2);
                         ctx.fill();
                         ctx.fillStyle = "#ffffff";
-                        ctx.font = "bold 7px Arial";
-                        ctx.fillText("👟" + totalHold, x + (tableWidth/2 + 12), tableY - 1);
+                        ctx.font = "bold 8px Arial";
+                        ctx.fillText("👟" + totalHold, x + (tableWidth/2 + 13), tableY - 1);
                     }}
                 }});
 
@@ -316,13 +321,13 @@ if not edited_df.empty and takt_time_sec > 0:
                         ctx.strokeStyle = prod.status === 'queued' ? "#dc2626" : "#1f2937";
                         ctx.lineWidth = 1;
                         ctx.beginPath();
-                        ctx.roundRect(prod.x - 7, 113.5, 14, 14, 2);
+                        ctx.roundRect(prod.x - 8, 118, 16, 16, 2);
                         ctx.fill();
                         ctx.stroke();
 
-                        ctx.font = "9px Arial";
+                        ctx.font = "10px Arial";
                         ctx.textAlign = "center";
-                        ctx.fillText("👟", prod.x, 125);
+                        ctx.fillText("👟", prod.x, 131);
                     }} else if (prod.status === 'working') {{
                         let pos = getStationCoords(prod.currentStationIdx);
                         let stn = stations[prod.currentStationIdx];
@@ -331,27 +336,27 @@ if not edited_df.empty and takt_time_sec > 0:
                         ctx.strokeStyle = "#d97706";
                         ctx.lineWidth = 1;
                         ctx.beginPath();
-                        ctx.roundRect(pos.x - 7, pos.tableY - 7, 14, 14, 2);
+                        ctx.roundRect(pos.x - 8, pos.tableY - 8, 16, 16, 2);
                         ctx.fill();
                         ctx.stroke();
 
-                        ctx.font = "9px Arial";
+                        ctx.font = "10px Arial";
                         ctx.textAlign = "center";
-                        ctx.fillText("👟", pos.x, pos.tableY + 3);
+                        ctx.fillText("👟", pos.x, pos.tableY + 4);
 
                         let prog = Math.min(100, (prod.workElapsed / stn.std_time) * 100);
                         ctx.fillStyle = "#1e293b";
-                        ctx.fillRect(pos.x - 8, pos.tableY + 8, 16, 2.5);
+                        ctx.fillRect(pos.x - 9, pos.tableY + 9, 18, 2.5);
                         ctx.fillStyle = "#10b981";
-                        ctx.fillRect(pos.x - 8, pos.tableY + 8, 16 * (prog / 100), 2.5);
+                        ctx.fillRect(pos.x - 9, pos.tableY + 9, 18 * (prog / 100), 2.5);
                     }}
                 }});
 
                 let totalWipInLine = products.length;
                 ctx.fillStyle = "#111827";
-                ctx.font = "bold 10px Arial";
+                ctx.font = "bold 11px Arial";
                 ctx.textAlign = "left";
-                ctx.fillText("📦 Total Output Selesai: " + finishedCount + " Pasang   |   🔄 Total WIP di Lini: " + totalWipInLine + " Pasang", 10, 243);
+                ctx.fillText("📦 Total Output Selesai: " + finishedCount + " Pasang   |   🔄 Total WIP di Lini: " + totalWipInLine + " Pasang", 10, 252);
             }}
 
             function update(timestamp) {{
@@ -486,7 +491,7 @@ if not edited_df.empty and takt_time_sec > 0:
     </html>
     """
 
-    st.components.v1.html(html_code, height=390, scrolling=False)
+    st.components.v1.html(html_code, height=410, scrolling=False)
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
@@ -512,4 +517,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_fully_visible_fixed_v2")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_speed_bottom")
