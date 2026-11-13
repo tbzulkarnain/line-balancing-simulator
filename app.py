@@ -522,27 +522,17 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_english_metrics")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_concise")
 
-    # --- STEP 4: INDUSTRIAL ENGINEERING (IE) AUTOMATED ANALYSIS ---
+    # --- STEP 4: INDUSTRIAL ENGINEERING (IE) EXECUTIVE SUMMARY ---
     st.markdown("---")
-    st.subheader("📋 4. Industrial Engineering (IE) Evaluation & Analysis")
+    st.subheader("📋 4. Industrial Engineering (IE) Executive Summary")
     
     st.markdown(f"""
-    Based on the line configuration and the 1-hour simulation run, here is the performance evaluation of your footwear production line:
-    
-    1. **Target vs Actual Capacity Evaluation**:
-       * **Target Demand**: `{target_demand_per_hour} Pairs/Hour` (Takt Time: `{takt_time_sec:.2f} seconds`).
-       * **Gap Analysis**: The variance between the theoretical target and actual shop-floor output is driven by **Line Balancing Loss**, initial line filling time (*start-up losses*), and discrete event phenomena like *blocking* and *starving* within a pure *One-Piece Flow* conveyor layout. WIP remaining inside the line at 3600s indicates micro-stoppages.
-    
-    2. **Critical Process Identification (Bottleneck)**:
-       * Process **`{bottleneck_process}`** acts as the primary constraint of the production line with an *Effective Cycle Time* of **`{max_ct:.2f} seconds`**.
-       * *IE Recommendation*: To close the gap toward full target fulfillment, consider adding operators (*Actual MP*) or performing a *method study* to optimize the work cycle specifically at `{bottleneck_process}`.
-    
-    3. **Labor Efficiency & Productivity Indicators**:
-       * **Total Actual Manpower (MP)**: `{total_actual_mp} Persons`
-       * **Total Theoretical Manpower**: `{total_theo_mp:.2f} Persons`
-       * **Manpower Utilization**: **`{mp_utilization:.1f}%`** *(Calculated as Theoretical MP ÷ Actual MP. Higher percentage means better workforce alignment).*
-       * **Line Efficiency (Yamazumi / CT-based)**: **`{line_efficiency:.1f}%`** *(Measures cycle time balance across all stations).*
-       * **Labor Productivity**: **`{labor_productivity:.2f} Pairs/Person/Hour`** *(Average output generated per worker per hour).*
+    * **Target vs Actual Gap**: Target is set at `{target_demand_per_hour} Pairs/Hour` (Takt Time: `{takt_time_sec:.2f}s`). Output gaps are caused by line balancing losses, start-up filling delays, and micro-stoppages (*blocking/starving*) inherent in strict One-Piece Flow layouts.
+    * **Bottleneck Identification**: Process **`{bottleneck_process}`** acts as the primary constraint with an Effective CT of **`{max_ct:.2f}s`**. Consider adding manpower or performing a method study on this workstation to close the output gap.
+    * **Key Performance Indicators (KPIs)**:
+      * **Manpower Utilization**: **`{mp_utilization:.1f}%`** (Theoretical MP `{total_theo_mp:.2f}` vs Actual MP `{total_actual_mp}`).
+      * **Line Efficiency**: **`{line_efficiency:.1f}%`** (Cycle time balance across stations).
+      * **Labor Productivity**: **`{labor_productivity:.2f} Pairs/Person/Hour`**.
     """)
