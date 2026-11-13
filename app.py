@@ -6,15 +6,15 @@ import math
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
 st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
-st.caption("Simulasi lini riil: Tinggi wadah komponen diperbesar agar seluruh tombol kontrol tampil utuh.")
+st.caption("Simulasi lini riil: Actual MP otomatis memperbarui diri saat target produksi atau waktu kerja diubah.")
 
 # --- KONTROL DI LAYAR UTAMA (TANPA SIDEBAR) ---
 st.markdown("### ⚙️ Parameter & Kontrol Lini Produksi")
 col_p1, col_p2, col_p3 = st.columns(3)
 with col_p1:
-    available_time_min = st.number_input("Waktu Kerja Efektif (Menit/Shift)", value=480, step=10)
+    available_time_min = st.number_input("Waktu Kerja Efektif (Menit/Shift)", value=480, step=10, key="input_time")
 with col_p2:
-    target_demand = st.number_input("Target Production (Pasang/Shift)", value=400, step=10)
+    target_demand = st.number_input("Target Production (Pasang/Shift)", value=400, step=10, key="input_demand")
 with col_p3:
     speed_multiplier = st.slider("⚡ Kecepatan Simulasi (Multiplier)", min_value=1.0, max_value=20.0, value=5.0, step=0.5)
 
@@ -24,8 +24,9 @@ st.info(f"⏱️ **Takt Time Target Lini**: {takt_time_sec:.2f} detik/pasang")
 # --- STEP 1: TABEL INPUT TUNGGAL (PROSES, CT, ALLOWANCE, & ACTUAL MP) ---
 st.markdown("---")
 st.subheader("1. Data Input Proses & Pengaturan Actual MP")
-st.write("Masukkan Nama Proses, CT Base, dan Allowance. Kolom **Actual MP** terisi otomatis (pembulatan ke atas) dan dapat Anda sesuaikan langsung di tabel ini.")
+st.write("Masukkan Nama Proses, CT Base, dan Allowance. Kolom **Actual MP** akan otomatis menghitung ulang (pembulatan ke atas) setiap kali Target Produksi atau Waktu Kerja diubah.")
 
+# Inisialisasi session state untuk data tabel dan pelacak parameter
 if "line_data" not in st.session_state:
     st.session_state.line_data = pd.DataFrame({
         "Nama Proses": ["st collar lining", "st tip", "st counter", "hotmelt", "st margin", "punching", "insert lace"],
@@ -33,11 +34,18 @@ if "line_data" not in st.session_state:
         "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
     })
 
+if "prev_takt_time" not in st.session_state:
+    st.session_state.prev_takt_time = takt_time_sec
+
 temp_df = st.session_state.line_data.copy()
 temp_df["Standard Time (s)"] = temp_df["Cycle Time Base (s)"] * (1 + temp_df["Allowance (%)"] / 100)
 temp_df["Auto MP"] = temp_df["Standard Time (s)"].apply(lambda st_val: max(1, math.ceil(st_val / takt_time_sec)) if takt_time_sec > 0 else 1)
 
-if "Actual MP" not in temp_df.columns:
+# Jika Takt Time berubah (karena target/waktu kerja diganti), paksa Actual MP ikut memperbarui diri secara otomatis
+if abs(st.session_state.prev_takt_time - takt_time_sec) > 1e-5:
+    temp_df["Actual MP"] = temp_df["Auto MP"]
+    st.session_state.prev_takt_time = takt_time_sec
+elif "Actual MP" not in temp_df.columns:
     temp_df["Actual MP"] = temp_df["Auto MP"]
 
 edited_df = st.data_editor(
@@ -76,7 +84,7 @@ if not edited_df.empty and takt_time_sec > 0:
     col_m3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col_m4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI KANVAS DENGAN WADAH YANG CUKUP TINGGI ---
+    # --- STEP 2: ANIMASI KANVAS ---
     st.markdown("---")
     st.subheader("2. 🎬 Simulasi Lini Produksi Sepatu (One-Piece Flow)")
     st.caption("Visualisasi ringkas dengan tombol kontrol yang dijamin tampil utuh di bawah.")
@@ -478,8 +486,7 @@ if not edited_df.empty and takt_time_sec > 0:
     </html>
     """
 
-    # Tinggi komponen iframe diperbesar menjadi 390 agar tombol kontrol di bawahnya tampil utuh dan mudah diklik
-    st.components.v1.html(html_code, height=420, scrolling=False)
+    st.components.v1.html(html_code, height=390, scrolling=False)
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
@@ -505,4 +512,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_fully_visible_fixed")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_fully_visible_fixed_v2")
