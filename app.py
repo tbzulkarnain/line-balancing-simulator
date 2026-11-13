@@ -6,7 +6,7 @@ import math
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
 st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
-st.caption("Simulasi lini riil: Layout ringkas dan tombol kontrol dijamin tampil utuh.")
+st.caption("Simulasi lini riil: Tinggi wadah komponen diperbesar agar seluruh tombol kontrol tampil utuh.")
 
 # --- KONTROL DI LAYAR UTAMA (TANPA SIDEBAR) ---
 st.markdown("### ⚙️ Parameter & Kontrol Lini Produksi")
@@ -76,10 +76,10 @@ if not edited_df.empty and takt_time_sec > 0:
     col_m3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col_m4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI KANVAS (UKURAN KOMPAK & TOMBOL DIJAMIN KELIHATAN) ---
+    # --- STEP 2: ANIMASI KANVAS DENGAN WADAH YANG CUKUP TINGGI ---
     st.markdown("---")
     st.subheader("2. 🎬 Simulasi Lini Produksi Sepatu (One-Piece Flow)")
-    st.caption("Visualisasi ringkas dengan tinggi kanvas yang proporsional.")
+    st.caption("Visualisasi ringkas dengan tombol kontrol yang dijamin tampil utuh di bawah.")
 
     line_stations = []
     global_station_index = 0
@@ -126,14 +126,14 @@ if not edited_df.empty and takt_time_sec > 0:
                 font-family: Arial, sans-serif;
                 background-color: #e8f5e9;
                 margin: 0;
-                padding: 0;
+                padding: 4px;
                 text-align: center;
             }}
             #canvas-container {{
                 background: #ffffff;
                 border: 2px solid #a5d6a7;
                 border-radius: 8px;
-                padding: 6px;
+                padding: 10px;
                 display: inline-block;
                 box-shadow: 0 4px 6px rgba(0,0,0,0.08);
                 width: 100%;
@@ -147,24 +147,24 @@ if not edited_df.empty and takt_time_sec > 0:
                 height: auto;
             }}
             .panel {{
-                margin-top: 4px;
+                margin-top: 10px;
                 display: flex;
                 justify-content: center;
                 align-items: center;
-                gap: 10px;
+                gap: 12px;
                 flex-wrap: wrap;
             }}
             .controls {{
                 display: flex;
-                gap: 8px;
+                gap: 10px;
             }}
             button {{
                 background-color: #2563eb;
                 color: white;
                 border: none;
-                padding: 5px 12px;
-                font-size: 12px;
-                border-radius: 4px;
+                padding: 8px 18px;
+                font-size: 14px;
+                border-radius: 6px;
                 cursor: pointer;
                 font-weight: bold;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -182,7 +182,7 @@ if not edited_df.empty and takt_time_sec > 0:
     </head>
     <body>
         <div id="canvas-container">
-            <h4 id="timer-display" style="margin: 0 0 4px 0; color: #1e293b; font-size: 13px;">⏱️ Waktu Aktual: 0.0 Detik | Takt Time: {takt_val:.1f}s</h4>
+            <h4 id="timer-display" style="margin: 0 0 6px 0; color: #1e293b; font-size: 14px;">⏱️ Waktu Aktual: 0.0 Detik | Takt Time: {takt_val:.1f}s</h4>
             <canvas id="simCanvas" width="1040" height="250"></canvas>
             <div class="panel">
                 <div class="controls">
@@ -220,7 +220,6 @@ if not edited_df.empty and takt_time_sec > 0:
             function getStationCoords(i) {{
                 let isTop = (i % 2 === 0);
                 let x = 15 + i * colSpacing + (colSpacing / 2);
-                // Konveyor di tengah (Y: 100 s.d 145), meja di atas (Y: 65) dan di bawah (Y: 180)
                 let tableY = isTop ? 65 : 180;
                 return {{ x: x, tableY: tableY, isTop: isTop }};
             }}
@@ -228,7 +227,7 @@ if not edited_df.empty and takt_time_sec > 0:
             function drawScene() {{
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // 1. Konveyor Tengah Dikecilkan (Y: 100 s.d 145)
+                // 1. Konveyor Tengah
                 ctx.fillStyle = "#f1f8e9";
                 ctx.strokeStyle = "#1f2937";
                 ctx.lineWidth = 1.5;
@@ -243,7 +242,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // 2. Gambar Meja & Operator Rapat
+                // 2. Gambar Meja & Operator
                 stations.forEach(function(stn, i) {{
                     let pos = getStationCoords(i);
                     let x = pos.x;
@@ -302,7 +301,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     }}
                 }});
 
-                // 3. Gambar Produk Pasang Sepatu (👟) di Konveyor
+                // 3. Gambar Produk Pasang Sepatu (👟)
                 products.forEach(function(prod) {{
                     if (prod.status === 'conveyor' || prod.status === 'queued') {{
                         ctx.fillStyle = prod.status === 'queued' ? "#fee2e2" : "#ffffff";
@@ -479,7 +478,8 @@ if not edited_df.empty and takt_time_sec > 0:
     </html>
     """
 
-    st.components.v1.html(html_code, height=300, scrolling=False)
+    # Tinggi komponen iframe diperbesar menjadi 390 agar tombol kontrol di bawahnya tampil utuh dan mudah diklik
+    st.components.v1.html(html_code, height=390, scrolling=False)
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
@@ -505,4 +505,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_fully_visible")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_fully_visible_fixed")
