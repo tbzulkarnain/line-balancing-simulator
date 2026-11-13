@@ -124,10 +124,10 @@ if not edited_df.empty and takt_time_sec > 0:
     row2_c2.metric("⚡ Labor Productivity", f"{labor_productivity:.1f} Pairs/P/H")
     row2_c3.metric("💰 Labor Cost / Pair", f"${labor_cost_per_pair_usd:,.2f} USD")
 
-    # --- STEP 2: CANVAS ANIMATION ---
+    # --- STEP 2: CANVAS ANIMATION (PERGERAKAN LURUS ORTHOGONAL 90 DERAJAT) ---
     st.markdown("---")
     st.subheader("2. 🎬 Shoe Production Line Simulation (One-Piece Flow)")
-    st.caption("Simulation runs for 1 Hour (3600 Seconds). Clean conveyor belt visualization with proper queue flow across workstations.")
+    st.caption("Simulation runs for 1 Hour (3600 Seconds). Realistic orthogonal transfer motion: straight conveyor travel and 90-degree perpendicular push/pull to workstations.")
 
     line_stations = []
     global_station_index = 0
@@ -383,7 +383,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     ctx.arc(opX, tableY, Math.max(6, tableWidth/2.8), Math.PI * 0.72, Math.PI * 1.28);
                     ctx.stroke();
 
-                    // Transfer line
+                    // Jalur transfer material tegak lurus (orthogonal guide line)
                     ctx.strokeStyle = "#94a3b8";
                     ctx.lineWidth = 1;
                     ctx.setLineDash([2, 2]);
@@ -469,37 +469,18 @@ if not edited_df.empty and takt_time_sec > 0:
                     let targetProcName = uniqueProcesses[prod.currentProcessStep];
                     let candidateStations = stations.map((s, i) => Object.assign({{}}, s, {{ idx: i }})).filter(s => s.process_name === targetProcName);
                     
-                    let availableStation = candidateStations.find(cs => !window.simState.products.some(p => p.currentStationIdx === cs.idx && (p.status === 'working' || p.status === 'fetching' || p.status === 'returning')));
+                    let availableStation = candidateStations.find(cs => !window.simState.products.some(p => p.currentStationIdx === cs.idx && (p.status === 'working' || p.status === 'fetching_x' || p.status === 'fetching_y' || p.status === 'returning_y' || p.status === 'returning_x')));
 
                     if (prod.status === 'conveyor' || prod.status === 'conveyor_wait') {{
                         if (availableStation) {{
                             prod.currentStationIdx = availableStation.idx;
                             let targetPos = getStationCoords(availableStation.idx);
                             
-                            let dx = targetPos.x - prod.x;
-                            let dy = targetPos.tableY - prod.y;
-                            let dist = Math.sqrt(dx*dx + dy*dy);
-
-                            if (dist <= 3) {{
-                                prod.x = targetPos.x;
-                                prod.y = targetPos.tableY;
-                                prod.status = 'working';
-                                prod.workElapsed = 0;
-                            }} else {{
-                                prod.status = 'fetching';
-                                let moveStep = 180 * adjustedDelta;
-                                if (dist <= moveStep) {{
-                                    prod.x = targetPos.x;
-                                    prod.y = targetPos.tableY;
-                                    prod.status = 'working';
-                                    prod.workElapsed = 0;
-                                }} else {{
-                                    prod.x += (dx / dist) * moveStep;
-                                    prod.y += (dy / dist) * moveStep;
-                                }}
-                            }}
+                            // Gerak orthogonal (Lurus Horizontal dulu ke X stasiun, baru geser Vertikal ke Y meja)
+                            prod.targetX = targetPos.x;
+                            prod.targetY = targetPos.tableY;
+                            prod.status = 'fetching_x';
                         }} else {{
-                            // Jika semua operator penuh, produk berjalan di konveyor mencari stasiun pertama dari proses tujuannya, lalu mengantre rapi
                             let firstStationOfProc = candidateStations[0];
                             let targetPos = getStationCoords(firstStationOfProc.idx);
                             
@@ -527,21 +508,25 @@ if not edited_df.empty and takt_time_sec > 0:
                                 prod.status = 'conveyor_wait';
                             }}
                         }}
-                    }} else if (prod.status === 'fetching') {{
-                        let targetPos = getStationCoords(prod.currentStationIdx);
-                        let dx = targetPos.x - prod.x;
-                        let dy = targetPos.tableY - prod.y;
-                        let dist = Math.sqrt(dx*dx + dy*dy);
-
-                        let moveStep = 180 * adjustedDelta;
-                        if (dist <= moveStep) {{
-                            prod.x = targetPos.x;
-                            prod.y = targetPos.tableY;
+                    }} else if (prod.status === 'fetching_x') {{
+                        // Gerak lurus horizontal di atas konveyor sampai sejajar dengan kolom stasiun
+                        let moveStep = 200 * adjustedDelta;
+                        if (Math.abs(prod.targetX - prod.x) <= moveStep) {{
+                            prod.x = prod.targetX;
+                            prod.status = 'fetching_y'; // Lanjut gerak lurus vertikal ke meja
+                        }} else {{
+                            prod.x += (prod.targetX > prod.x) ? moveStep : -moveStep;
+                        }}
+                        prod.y = 130;
+                    }} else if (prod.status === 'fetching_y') {{
+                        // Gerak lurus vertikal (siku 90 derajat) dari konveyor ke meja operator
+                        let moveStep = 200 * adjustedDelta;
+                        if (Math.abs(prod.targetY - prod.y) <= moveStep) {{
+                            prod.y = prod.targetY;
                             prod.status = 'working';
                             prod.workElapsed = 0;
                         }} else {{
-                            prod.x += (dx / dist) * moveStep;
-                            prod.y += (dy / dist) * moveStep;
+                            prod.y += (prod.targetY > prod.y) ? moveStep : -moveStep;
                         }}
                     }} else if (prod.status === 'working') {{
                         let stn = stations[prod.currentStationIdx];
@@ -553,27 +538,19 @@ if not edited_df.empty and takt_time_sec > 0:
                                 window.simState.finishedCount++;
                                 prod.status = 'finished';
                             }} else {{
-                                prod.status = 'returning';
+                                prod.status = 'returning_y';
                             }}
                         }}
-                    }} else if (prod.status === 'returning') {{
-                        let currentPos = getStationCoords(prod.currentStationIdx);
-                        let targetX = currentPos.x;
+                    }} else if (prod.status === 'returning_y') {{
+                        // Gerak lurus vertikal kembali ke jalur konveyor utama (130)
+                        let moveStep = 200 * adjustedDelta;
                         let targetY = 130;
-
-                        let dx = targetX - prod.x;
-                        let dy = targetY - prod.y;
-                        let dist = Math.sqrt(dx*dx + dy*dy);
-
-                        let moveStep = 180 * adjustedDelta;
-                        if (dist <= moveStep) {{
-                            prod.x = targetX;
+                        if (Math.abs(targetY - prod.y) <= moveStep) {{
                             prod.y = targetY;
                             prod.status = 'conveyor';
                             prod.workElapsed = 0;
                         }} else {{
-                            prod.x += (dx / dist) * moveStep;
-                            prod.y += (dy / dist) * moveStep;
+                            prod.y += (targetY > prod.y) ? moveStep : -moveStep;
                         }}
                     }}
                 }});
@@ -723,7 +700,7 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v10")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v11")
 
     # --- STEP 4: INDUSTRIAL ENGINEERING (IE) EXECUTIVE SUMMARY ---
     st.markdown("---")
