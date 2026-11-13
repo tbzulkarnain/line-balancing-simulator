@@ -6,7 +6,7 @@ import math
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
 st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
-st.caption("Simulasi lini riil: Target berbasis Pasang/Jam dan berhenti otomatis (Auto-Stop) saat mencapai durasi 1 jam (3600 detik).")
+st.caption("Simulasi lini riil: Target Pasang/Jam, Auto-Stop 1 Jam, Visualisasi Konveyor, & Analisis IE Otomatis.")
 
 # --- KONTROL PARAMETER DI ATAS (TARGET PASANG/JAM) ---
 st.markdown("### ⚙️ Parameter Lini Produksi")
@@ -14,7 +14,6 @@ col_p1, col_p2 = st.columns(2)
 with col_p1:
     target_demand_per_hour = st.number_input("Target Production (Pasang/Jam)", value=50, step=5, key="input_demand_hour")
 
-# Karena durasi simulasi fix 1 jam (3600 detik), Takt Time dihitung dari target per jam
 takt_time_sec = 3600 / target_demand_per_hour if target_demand_per_hour > 0 else 0
 st.info(f"⏱️ **Takt Time Target Lini**: {takt_time_sec:.2f} detik/pasang (Simulasi berjalan untuk durasi 1 Jam / 3600 Detik)")
 
@@ -119,7 +118,7 @@ if not edited_df.empty and takt_time_sec > 0:
     stations_json = json.dumps(flat_stations)
     takt_val = float(takt_time_sec)
 
-    speed_multiplier = st.slider("⚡ Kecepatan Simulasi (Multiplier)", min_value=1.0, max_value=50.0, value=10.0, step=1.0, key="speed_slider_bottom")
+    speed_multiplier = st.slider("⚡ Kecepatan Simulasi (Multiplier)", min_value=1.0, max_value=50.0, value=20.0, step=1.0, key="speed_slider_bottom")
     current_speed = float(speed_multiplier)
 
     html_code = f"""
@@ -202,7 +201,7 @@ if not edited_df.empty and takt_time_sec > 0:
             const stations = {stations_json};
             const taktTime = {takt_val};
             let speedMultiplier = {current_speed};
-            const MAX_TIME = 3600.0; // Batasan 1 Jam (3600 detik)
+            const MAX_TIME = 3600.0;
 
             const canvas = document.getElementById("simCanvas");
             const ctx = canvas.getContext("2d");
@@ -234,7 +233,6 @@ if not edited_df.empty and takt_time_sec > 0:
             function drawScene() {{
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // 1. Konveyor Tengah
                 ctx.fillStyle = "#f1f8e9";
                 ctx.strokeStyle = "#1f2937";
                 ctx.lineWidth = 1.5;
@@ -249,7 +247,6 @@ if not edited_df.empty and takt_time_sec > 0:
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // 2. Gambar Meja & Operator
                 stations.forEach(function(stn, i) {{
                     let pos = getStationCoords(i);
                     let x = pos.x;
@@ -308,7 +305,6 @@ if not edited_df.empty and takt_time_sec > 0:
                     }}
                 }});
 
-                // 3. Gambar Produk Pasang Sepatu (👟)
                 products.forEach(function(prod) {{
                     if (prod.status === 'conveyor' || prod.status === 'queued') {{
                         ctx.fillStyle = prod.status === 'queued' ? "#fee2e2" : "#ffffff";
@@ -336,7 +332,7 @@ if not edited_df.empty and takt_time_sec > 0:
 
                         ctx.font = "10px Arial";
                         ctx.textAlign = "center";
-                        ctx.fillText("👟", pos.x, pos.tableY + 4);
+                        ctx.fillText("👟", prod.x, pos.tableY + 4);
 
                         let prog = Math.min(100, (prod.workElapsed / stn.std_time) * 100);
                         ctx.fillStyle = "#1e293b";
@@ -363,7 +359,6 @@ if not edited_df.empty and takt_time_sec > 0:
                 let adjustedDelta = deltaTime * speedMultiplier;
                 timeElapsed += adjustedDelta;
 
-                // AUTO-STOP JIKA MENCAPAI 1 JAM (3600 DETIK)
                 if (timeElapsed >= MAX_TIME) {{
                     timeElapsed = MAX_TIME;
                     isRunning = false;
@@ -524,3 +519,28 @@ if not edited_df.empty and takt_time_sec > 0:
 
     fig_bar.update_layout(height=380, template="plotly_white")
     st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_autostop_hour")
+
+    # --- STEP 4: ANALISIS TEKNIK INDUSTRI (IE) OTOMATIS ---
+    st.markdown("---")
+    st.subheader("📋 4. Analisis & Evaluasi Teknik Industri (Industrial Engineering)")
+    
+    # Perhitungan metrik evaluasi
+    total_mp_used = df['Actual MP'].sum()
+    labor_productivity = target_demand_per_hour / total_mp_used if total_mp_used > 0 else 0
+    
+    st.markdown(f"""
+    Berdasarkan konfigurasi lini dan hasil simulasi berdurasi 1 jam, berikut adalah evaluasi performa lini produksi sepatu Anda:
+    
+    1. **Evaluasi Target vs Kapasitas Aktual**:
+       * **Target Demand**: `{target_demand_per_hour} Pasang/Jam` (Takt Time: `{takt_time_sec:.2f} detik`).
+       * **Analisis Kesenjangan**: Selisih antara target teoretis dan output nyata di lantai produksi disebabkan oleh **Line Balancing Loss**, waktu muat awal lini (*filling time*), serta fenomena *blocking* dan *starving* antar stasiun estafet murni (*One-Piece Flow*). Produk yang masih tertahan sebagai WIP di akhir jam ke-1 membuktikan adanya hambatan aliran mikro.
+    
+    2. **Identifikasi Proses Kritis (Bottleneck)**:
+       * Proses **`{bottleneck_process}`** bertindak sebagai pembatas utama laju produksi dengan *Effective Cycle Time* sebesar **`{max_ct:.2f} detik`**. 
+       * *Rekomendasi IE*: Jika Anda ingin mendongkrak output mendekati target penuh, pertimbangkan untuk menambah operator (*Actual MP*) atau memperbaiki metode kerja (*method study*) khusus pada proses `{bottleneck_process}` ini.
+    
+    3. **Indikator Ketenagakerjaan & Produktivitas**:
+       * **Total Manpower (MP)**: `{total_mp_used} Orang`
+       * **Produktivitas Tenaga Kerja**: `{labor_productivity:.2f} Pasang/Orang/Jam`
+       * **Tingkat Keseimbangan Lini (Balancing Rate)**: `{balancing_rate:.2f}%` (Semakin mendekati 100%, semakin merata beban kerja antar operator).
+    """)
