@@ -5,7 +5,7 @@ import json
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
 st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
-st.caption("Simulasi lini riil: Meja operator berbentuk vertikal memanjang dari atas ke bawah, dirapatkan ke konveyor, dan teks informasi tertata rapi di luar meja.")
+st.caption("Simulasi lini riil: Meja vertikal proporsional, tulisan proses & CT diperbesar dengan jarak aman di luar meja, serta satuan output dalam Pasang.")
 
 # --- SIDEBAR: PARAMETER OPERASIONAL ---
 st.sidebar.header("⚙️ Parameter Operasional")
@@ -64,10 +64,10 @@ if not edited_df.empty and takt_time_sec > 0:
     col3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI KANVAS DENGAN MEJA VERTIKAL & TEKS AMAN ---
+    # --- STEP 2: ANIMASI KANVAS DENGAN TEKS BESAR & BEBAS TUMPUKAN ---
     st.markdown("---")
     st.subheader("2. 🎬 Simulasi Lini Produksi Sepatu (One-Piece Flow)")
-    st.caption("Meja berbentuk vertikal (memanjang dari atas ke bawah), dirapatkan ke konveyor, dan teks informasi berada di luar area meja.")
+    st.caption("Ukuran huruf diperbesar dan diposisikan jauh di luar kotak meja sehingga tidak saling menimpa.")
 
     line_stations = []
     global_station_index = 0
@@ -171,7 +171,7 @@ if not edited_df.empty and takt_time_sec > 0:
     <body>
         <div id="canvas-container">
             <h3 id="timer-display" style="margin: 0 0 10px 0; color: #1e293b; font-size: 20px;">⏱️ Waktu Aktual: 0.0 Detik | Takt Time: {takt_val:.1f}s</h3>
-            <canvas id="simCanvas" width="1100" height="540"></canvas>
+            <canvas id="simCanvas" width="1100" height="580"></canvas>
             <div class="panel">
                 <div class="controls">
                     <button onclick="startSimulation()">▶ Play</button>
@@ -205,56 +205,70 @@ if not edited_df.empty and takt_time_sec > 0:
             function getStationCoords(i) {{
                 let isTop = (i % 2 === 0);
                 let x = 60 + i * colSpacing + (colSpacing / 2);
-                // Meja vertikal memanjang dari atas ke bawah, dirapatkan langsung ke konveyor (Y konveyor di 210 s.d 270)
-                let tableY = isTop ? 135 : 345;
+                // Konveyor di Y: 240 s.d 300 (tengah di Y: 270)
+                // Meja atas: Y = 165 (tepi bawah meja di 203, tepi atas di 127)
+                // Meja bawah: Y = 375 (tepi atas meja di 337, tepi bawah di 413)
+                let tableY = isTop ? 165 : 375;
                 return {{ x: x, tableY: tableY, isTop: isTop }};
             }}
 
             function drawScene() {{
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // 1. Konveyor Tengah Memanjang (Posisi Y: 210 s.d 270)
+                // 1. Konveyor Tengah Memanjang (Posisi Y: 240 s.d 300)
                 ctx.fillStyle = "#f1f8e9";
                 ctx.strokeStyle = "#1f2937";
                 ctx.lineWidth = 2.5;
-                ctx.fillRect(25, 210, canvas.width - 50, 60);
-                ctx.strokeRect(25, 210, canvas.width - 50, 60);
+                ctx.fillRect(25, 240, canvas.width - 50, 60);
+                ctx.strokeRect(25, 240, canvas.width - 50, 60);
 
                 ctx.strokeStyle = "#94a3b8";
                 ctx.setLineDash([10, 10]);
                 ctx.beginPath();
-                ctx.moveTo(25, 240);
-                ctx.lineTo(canvas.width - 25, 240);
+                ctx.moveTo(25, 270);
+                ctx.lineTo(canvas.width - 25, 270);
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // 2. Gambar Meja & Operator Sisi Atas dan Bawah (Meja Vertikal Memanjang)
+                // 2. Gambar Meja & Operator Sisi Atas dan Bawah
                 stations.forEach(function(stn, i) {{
                     let pos = getStationCoords(i);
                     let x = pos.x;
                     let tableY = pos.tableY;
                     let isTop = pos.isTop;
 
-                    // Kotak Meja Kerja Berbentuk Vertikal (Lebar 52, Tinggi 76)
+                    // Kotak Meja Kerja Vertikal (Lebar 52, Tinggi 76 -> setengah tinggi = 38)
                     ctx.fillStyle = stn.is_bottleneck ? "#dc2626" : "#2563eb";
                     ctx.fillRect(x - 26, tableY - 38, 52, 76);
                     ctx.strokeStyle = "#ffffff";
                     ctx.lineWidth = 2.5;
                     ctx.strokeRect(x - 26, tableY - 38, 52, 76);
 
-                    // Teks Nama Proses & CT Diposisikan di LUAR Meja (Aman tidak tertutup)
-                    ctx.fillStyle = "#111827";
-                    ctx.font = "bold 11px Arial";
+                    // Teks Nama Proses & CT Diperbesar & Diberi Jarak Aman di Luar Meja
                     ctx.textAlign = "center";
-                    let labelY = isTop ? (tableY - 52) : (tableY + 58);
-                    ctx.fillText(stn.process_name, x, labelY);
-                    
-                    ctx.font = "bold 11px Arial";
-                    ctx.fillStyle = "#1f2937";
-                    ctx.fillText("CT: " + stn.std_time.toFixed(1) + "s", x, labelY + (isTop ? 14 : -14));
-                    ctx.font = "10px Arial";
-                    ctx.fillStyle = "#4b5563";
-                    ctx.fillText(stn.display_name, x, labelY + (isTop ? 28 : -28));
+                    if (isTop) {{
+                        // Tepi atas meja ada di tableY - 38 = 127
+                        // Baris 1 (Nama Proses + Nomor): Y = 92 (jarak 35px di atas tepi meja)
+                        ctx.fillStyle = "#111827";
+                        ctx.font = "bold 14px Arial";
+                        ctx.fillText(stn.display_name, x, tableY - 72);
+
+                        // Baris 2 (CT): Y = 112 (jarak 15px di atas tepi meja)
+                        ctx.fillStyle = "#1e293b";
+                        ctx.font = "bold 13px Arial";
+                        ctx.fillText("CT: " + stn.std_time.toFixed(1) + "s", x, tableY - 52);
+                    }} else {{
+                        // Tepi bawah meja ada di tableY + 38 = 413
+                        // Baris 1 (CT): Y = 435 (jarak 22px di bawah tepi meja)
+                        ctx.fillStyle = "#1e293b";
+                        ctx.font = "bold 13px Arial";
+                        ctx.fillText("CT: " + stn.std_time.toFixed(1) + "s", x, tableY + 60);
+
+                        // Baris 2 (Nama Proses + Nomor): Y = 456 (jarak 43px di bawah tepi meja)
+                        ctx.fillStyle = "#111827";
+                        ctx.font = "bold 14px Arial";
+                        ctx.fillText(stn.display_name, x, tableY + 80);
+                    }}
 
                     // Kursi & Operator di sebelah KIRI meja
                     let opX = x - 42;
@@ -277,28 +291,28 @@ if not edited_df.empty and takt_time_sec > 0:
                     if (totalHold > 0) {{
                         ctx.fillStyle = waitingCount > 0 ? "#b91c1c" : "#047857";
                         ctx.beginPath();
-                        ctx.roundRect(x + 10, tableY - 45, 36, 18, 5);
+                        ctx.roundRect(x + 12, tableY - 42, 38, 20, 5);
                         ctx.fill();
                         ctx.fillStyle = "#ffffff";
-                        ctx.font = "bold 10px Arial";
-                        ctx.fillText("👟 " + totalHold, x + 28, tableY - 32);
+                        ctx.font = "bold 11px Arial";
+                        ctx.fillText("👟 " + totalHold, x + 31, tableY - 28);
                     }}
                 }});
 
-                // 3. Gambar Produk Pasang Sepatu (👟) — Berjejer rapi di konveyor
+                // 3. Gambar Produk Pasang Sepatu (👟) — Berjejer rapi di konveyor (tengah Y: 270)
                 products.forEach(function(prod) {{
                     if (prod.status === 'conveyor' || prod.status === 'queued') {{
                         ctx.fillStyle = prod.status === 'queued' ? "#fee2e2" : "#ffffff";
                         ctx.strokeStyle = prod.status === 'queued' ? "#dc2626" : "#1f2937";
                         ctx.lineWidth = 2;
                         ctx.beginPath();
-                        ctx.roundRect(prod.x - 14, 226, 28, 28, 5);
+                        ctx.roundRect(prod.x - 14, 256, 28, 28, 5);
                         ctx.fill();
                         ctx.stroke();
 
                         ctx.font = "15px Arial";
                         ctx.textAlign = "center";
-                        ctx.fillText("👟", prod.x, 246);
+                        ctx.fillText("👟", prod.x, 276);
                     }} else if (prod.status === 'working') {{
                         let pos = getStationCoords(prod.currentStationIdx);
                         let stn = stations[prod.currentStationIdx];
@@ -325,9 +339,9 @@ if not edited_df.empty and takt_time_sec > 0:
 
                 let totalWipInLine = products.length;
                 ctx.fillStyle = "#111827";
-                ctx.font = "bold 14px Arial";
+                ctx.font = "bold 15px Arial";
                 ctx.textAlign = "left";
-                ctx.fillText("📦 Total Output Selesai: " + finishedCount + " Pasang   |   🔄 Total WIP di Lini: " + totalWipInLine + " Pasang", 30, 515);
+                ctx.fillText("📦 Total Output Selesai: " + finishedCount + " Pasang   |   🔄 Total WIP di Lini: " + totalWipInLine + " Pasang", 30, 555);
             }}
 
             function update(timestamp) {{
@@ -462,7 +476,7 @@ if not edited_df.empty and takt_time_sec > 0:
     </html>
     """
 
-    st.components.v1.html(html_code, height=580, scrolling=False)
+    st.components.v1.html(html_code, height=620, scrolling=False)
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
@@ -488,4 +502,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_vertical")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_clear_text")
