@@ -479,7 +479,7 @@ if not edited_df.empty and takt_time_sec > 0:
     """
 
     # Tinggi komponen iframe diperbesar menjadi 390 agar tombol kontrol di bawahnya tampil utuh dan mudah diklik
-    st.components.v1.html(html_code, height=400, scrolling=False)
+    st.components.v1.html(html_code, height=420, scrolling=False)
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
