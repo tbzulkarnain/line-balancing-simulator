@@ -522,7 +522,7 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_concise")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_concise_v2")
 
     # --- STEP 4: INDUSTRIAL ENGINEERING (IE) EXECUTIVE SUMMARY ---
     st.markdown("---")
@@ -530,9 +530,9 @@ if not edited_df.empty and takt_time_sec > 0:
     
     st.markdown(f"""
     * **Target vs Actual Gap**: Target is set at `{target_demand_per_hour} Pairs/Hour` (Takt Time: `{takt_time_sec:.2f}s`). Output gaps are caused by line balancing losses, start-up filling delays, and micro-stoppages (*blocking/starving*) inherent in strict One-Piece Flow layouts.
-    * **Bottleneck Identification**: Process **`{bottleneck_process}`** acts as the primary constraint with an Effective CT of **`{max_ct:.2f}s`**. Consider adding manpower or performing a method study on this workstation to close the output gap.
+    * **Bottleneck Identification & Action**: Process **`{bottleneck_process}`** acts as the primary constraint with an Effective CT of **`{max_ct:.2f}s`**. Instead of adding headcount (which degrades MP utilization), prioritize **method engineering** or **operator upskilling** to reduce cycle time.
     * **Key Performance Indicators (KPIs)**:
-      * **Manpower Utilization**: **`{mp_utilization:.1f}%`** (Theoretical MP `{total_theo_mp:.2f}` vs Actual MP `{total_actual_mp}`).
-      * **Line Efficiency**: **`{line_efficiency:.1f}%`** (Cycle time balance across stations).
+      * **Manpower Utilization**: **`{mp_utilization:.1f}%`** *(Recommended standard: **$\ge$ 85%**).* If below target, optimize work allocation rather than adding workers.
+      * **Line Efficiency**: **`{line_efficiency:.1f}%`** *(Cycle time balance across stations).*
       * **Labor Productivity**: **`{labor_productivity:.2f} Pairs/Person/Hour`**.
     """)
