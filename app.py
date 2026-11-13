@@ -77,9 +77,9 @@ st.write("Enter Process Name, Base CT, and Allowance. **Actual MP** auto-calcula
 
 if "line_data" not in st.session_state:
     st.session_state.line_data = pd.DataFrame({
-        "Nama Proses": ["st collar lining", "st tip", "st counter", "hotmelt", "st margin", "punching", "insert lace"],
-        "Cycle Time Base (s)": [10.0, 35.0, 12.0, 18.0, 17.0, 15.0, 15.0],
-        "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+        "Nama Proses": ["st collar lining", "attach collar foam", "spray glue upper", "reverse collar lining", "st counter", "st edge upper", "punching", "insert lace"],
+        "Cycle Time Base (s)": [30.0, 18.0, 20.0, 20.0, 30.0, 18.0, 25.0, 36.0],
+        "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
     })
 
 temp_df = st.session_state.line_data.copy()
