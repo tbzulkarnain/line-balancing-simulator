@@ -6,14 +6,10 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
-# --- VISITOR COUNTER LOGIC (SESSION STATE + RETRO DISPLAY) ---
+# --- VISITOR COUNTER LOGIC (DYNAMIC INCREMENT ON SESSION LOAD) ---
 if "visitor_count" not in st.session_state:
-    st.session_state.visitor_count = 1173
-    st.session_state.counted = False
-
-if not st.session_state.counted:
+    st.session_state.visitor_count = 1174
     st.session_state.visitor_count += 1
-    st.session_state.counted = True
 
 formatted_visitors = f"{st.session_state.visitor_count:05d}"
 digits_html = "".join([
@@ -127,7 +123,7 @@ if not edited_df.empty and takt_time_sec > 0:
     # --- STEP 2: CANVAS ANIMATION ---
     st.markdown("---")
     st.subheader("2. 🎬 Shoe Production Line Simulation (One-Piece Flow)")
-    st.caption("Simulation runs for 1 Hour (3600 Seconds). Clean conveyor view with accurate total WIP/queue count badges per operator.")
+    st.caption("Simulation runs for 1 Hour (3600 Seconds). Clean conveyor view with orthogonal motion and accurate WIP/queue count badges.")
 
     line_stations = []
     global_station_index = 0
@@ -383,7 +379,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     ctx.arc(opX, tableY, Math.max(6, tableWidth/2.8), Math.PI * 0.72, Math.PI * 1.28);
                     ctx.stroke();
 
-                    // Hitung total sepatu yang sedang di stasiun ini (working + fetching + conveyor_wait yang mengantre menuju stasiun ini)
+                    // Hitung total sepatu yang terkait di stasiun ini (working + fetching + conveyor_wait antre)
                     let uniqueProcesses = [...new Set(stations.map(s => s.process_name))];
                     let stnProcessName = stn.process_name;
                     let processIndex = uniqueProcesses.indexOf(stnProcessName);
@@ -392,7 +388,6 @@ if not edited_df.empty and takt_time_sec > 0:
                         if (p.currentStationIdx === i && (p.status === 'working' || p.status === 'fetching_x' || p.status === 'fetching_y')) {{
                             return true;
                         }}
-                        // Jika sedang antre di konveyor untuk proses ini
                         if (p.currentProcessStep === processIndex && (p.status === 'conveyor_wait' || p.status === 'conveyor')) {{
                             let candidateStations = stations.map((s, idx) => ({{...s, idx}})).filter(s => s.process_name === stnProcessName);
                             if (candidateStations[0].idx === i) {{
@@ -716,7 +711,7 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v14")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v15")
 
     # --- STEP 4: INDUSTRIAL ENGINEERING (IE) EXECUTIVE SUMMARY ---
     st.markdown("---")
