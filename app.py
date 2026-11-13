@@ -2,17 +2,40 @@ import streamlit as st
 import pandas as pd
 import json
 import math
+import os
 import plotly.graph_objects as go
 
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
-# --- VISITOR COUNTER LOGIC (RELIABLE SESSION REFRESH INCREMENT) ---
-if "visitor_count" not in st.session_state:
-    st.session_state.visitor_count = 1175
+# --- VISITOR COUNTER LOGIC (FILE-BASED PERSISTENT ACROSS REFRESHES) ---
+counter_file = "visitor_count.txt"
+
+if "visited_session" not in st.session_state:
+    st.session_state.visited_session = True
+    if os.path.exists(counter_file):
+        try:
+            with open(counter_file, "r") as f:
+                current_count = int(f.read().strip())
+        except:
+            current_count = 1175
+        current_count += 1
+    else:
+        current_count = 1176
+    
+    # Simpan kembali ke file
+    with open(counter_file, "w") as f:
+        f.write(str(current_count))
+    
+    st.session_state.visitor_count = current_count
 else:
-    if "incremented_this_load" not in st.session_state:
-        st.session_state.visitor_count += 1
-        st.session_state.incremented_this_load = True
+    if os.path.exists(counter_file):
+        try:
+            with open(counter_file, "r") as f:
+                st.session_state.visitor_count = int(f.read().strip())
+        except:
+            st.session_state.visitor_count = 1175
+    else:
+        st.session_state.visitor_count = 1175
 
 formatted_visitors = f"{st.session_state.visitor_count:05d}"
 digits_html = "".join([
@@ -714,7 +737,7 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v16")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v17")
 
     # --- STEP 4: INDUSTRIAL ENGINEERING (IE) EXECUTIVE SUMMARY ---
     st.markdown("---")
