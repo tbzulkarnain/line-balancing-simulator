@@ -8,7 +8,6 @@ st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
 # --- VISITOR COUNTER LOGIC (SESSION STATE + RETRO DISPLAY) ---
 if "visitor_count" not in st.session_state:
-    # Base angka awal disesuaikan agar terlihat realistis, bertambah setiap sesi baru
     st.session_state.visitor_count = 1173
     st.session_state.counted = False
 
@@ -125,10 +124,10 @@ if not edited_df.empty and takt_time_sec > 0:
     row2_c2.metric("⚡ Labor Productivity", f"{labor_productivity:.1f} Pairs/P/H")
     row2_c3.metric("💰 Labor Cost / Pair", f"${labor_cost_per_pair_usd:,.2f} USD")
 
-    # --- STEP 2: CANVAS ANIMATION DENGAN REKAM VIDEO 30 DETIK ---
+    # --- STEP 2: CANVAS ANIMATION DENGAN REKAM VIDEO 2 MENIT ---
     st.markdown("---")
     st.subheader("2. 🎬 Shoe Production Line Simulation (One-Piece Flow)")
-    st.caption("Simulation runs for 1 Hour (3600 Seconds) with Auto-Stop. Click 'Record 30s Clip' to capture and download a video.")
+    st.caption("Simulation runs for 1 Hour (3600 Seconds) with Auto-Stop. Click 'Record 2m Clip' to capture and download a video.")
 
     line_stations = []
     global_station_index = 0
@@ -258,7 +257,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     <button onclick="startSimulation()">▶ Play</button>
                     <button onclick="pauseSimulation()">⏸ Pause</button>
                     <button class="reset" onclick="resetSimulation()">🔄 Reset</button>
-                    <button id="record-btn" class="record" onclick="toggleRecording()">🎥 Record 30s Clip & Download</button>
+                    <button id="record-btn" class="record" onclick="toggleRecording()">🎥 Record 2m Clip & Download</button>
                 </div>
             </div>
         </div>
@@ -305,7 +304,6 @@ if not edited_df.empty and takt_time_sec > 0:
             }}
 
             function drawScene() {{
-                // Isi latar belakang solid agar video rekaman tidak transparan/hitam
                 ctx.fillStyle = "#dcedc8";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -564,7 +562,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 drawScene();
             }}
 
-            // --- FUNGSI REKAM VIDEO KANVAS (30 DETIK CLIP) ---
+            // --- FUNGSI REKAM VIDEO KANVAS (2 MENIT / 120 DETIK) ---
             function toggleRecording() {{
                 if (!isRecording) {{
                     startRecording();
@@ -604,7 +602,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     const a = document.createElement('a');
                     a.style.display = 'none';
                     a.href = url;
-                    a.download = 'line_balancing_simulation_clip.webm';
+                    a.download = 'line_balancing_simulation_2m.webm';
                     document.body.appendChild(a);
                     a.click();
                     setTimeout(() => {{
@@ -617,20 +615,22 @@ if not edited_df.empty and takt_time_sec > 0:
                 isRecording = true;
                 recordBtn.classList.add("recording-active");
 
-                let secondsLeft = 30;
-                recordBtn.innerText = "⏹ Stop Recording (" + secondsLeft + "s)";
+                let secondsLeft = 120; // 2 Menit
+                recordBtn.innerText = "⏹ Stop Rec (" + Math.floor(secondsLeft/60) + "m " + (secondsLeft%60) + "s)";
 
                 recordCountdownInterval = setInterval(() => {{
                     secondsLeft--;
                     if (secondsLeft > 0) {{
-                        recordBtn.innerText = "⏹ Stop Recording (" + secondsLeft + "s)";
+                        let m = Math.floor(secondsLeft / 60);
+                        let s = secondsLeft % 60;
+                        recordBtn.innerText = "⏹ Stop Rec (" + m + "m " + s + "s)";
                     }}
                 }}, 1000);
 
-                // Otomatis berhenti & download setelah 30 detik
+                // Otomatis berhenti & download setelah 2 menit (120.000 ms)
                 recordTimeout = setTimeout(() => {{
                     if (isRecording) stopRecording();
-                }}, 30000);
+                }}, 120000);
             }}
 
             function stopRecording() {{
@@ -641,7 +641,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 clearTimeout(recordTimeout);
                 clearInterval(recordCountdownInterval);
                 recordBtn.classList.remove("recording-active");
-                recordBtn.innerText = "🎥 Record 30s Clip & Download";
+                recordBtn.innerText = "🎥 Record 2m Clip & Download";
             }}
 
             drawScene();
@@ -675,7 +675,7 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v1")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v2")
 
     # --- STEP 4: INDUSTRIAL ENGINEERING (IE) EXECUTIVE SUMMARY ---
     st.markdown("---")
