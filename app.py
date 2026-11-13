@@ -6,7 +6,7 @@ import math
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
 st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
-st.caption("Simulasi lini riil: Target Pasang/Jam, Auto-Stop 1 Jam, Visualisasi Konveyor, & Analisis IE Otomatis.")
+st.caption("Simulasi lini riil: Target Pasang/Jam, Auto-Stop 1 Jam, Actual MP Otomatis, & Analisis IE.")
 
 # --- KONTROL PARAMETER DI ATAS (TARGET PASANG/JAM) ---
 st.markdown("### ⚙️ Parameter Lini Produksi")
@@ -29,18 +29,12 @@ if "line_data" not in st.session_state:
         "Allowance (%)": [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
     })
 
-if "prev_takt_time" not in st.session_state:
-    st.session_state.prev_takt_time = takt_time_sec
-
 temp_df = st.session_state.line_data.copy()
 temp_df["Standard Time (s)"] = temp_df["Cycle Time Base (s)"] * (1 + temp_df["Allowance (%)"] / 100)
-temp_df["Auto MP"] = temp_df["Standard Time (s)"].apply(lambda st_val: max(1, math.ceil(st_val / takt_time_sec)) if takt_time_sec > 0 else 1)
 
-if abs(st.session_state.prev_takt_time - takt_time_sec) > 1e-5:
-    temp_df["Actual MP"] = temp_df["Auto MP"]
-    st.session_state.prev_takt_time = takt_time_sec
-elif "Actual MP" not in temp_df.columns:
-    temp_df["Actual MP"] = temp_df["Auto MP"]
+# Auto MP dihitung ulang otomatis berdasarkan Takt Time terbaru
+temp_df["Auto MP"] = temp_df["Standard Time (s)"].apply(lambda st_val: max(1, math.ceil(st_val / takt_time_sec)) if takt_time_sec > 0 else 1)
+temp_df["Actual MP"] = temp_df["Auto MP"]
 
 edited_df = st.data_editor(
     temp_df[["Nama Proses", "Cycle Time Base (s)", "Allowance (%)", "Standard Time (s)", "Actual MP"]],
@@ -81,7 +75,7 @@ if not edited_df.empty and takt_time_sec > 0:
     # --- STEP 2: ANIMASI KANVAS DENGAN AUTO-STOP 1 JAM (3600s) ---
     st.markdown("---")
     st.subheader("2. 🎬 Simulasi Lini Produksi Sepatu (One-Piece Flow)")
-    st.caption("Simulasi akan berhenti otomatis (Auto-Stop) saat waktu mencapai genap 1 Jam (3600 Detik).")
+    st.caption("Simulasi berjalan selama 1 Jam (3600 Detik) dan berhenti otomatis (Auto-Stop).")
 
     line_stations = []
     global_station_index = 0
@@ -332,7 +326,7 @@ if not edited_df.empty and takt_time_sec > 0:
 
                         ctx.font = "10px Arial";
                         ctx.textAlign = "center";
-                        ctx.fillText("👟", prod.x, pos.tableY + 4);
+                        ctx.fillText("👟", pos.x, pos.tableY + 4);
 
                         let prog = Math.min(100, (prod.workElapsed / stn.std_time) * 100);
                         ctx.fillStyle = "#1e293b";
@@ -524,7 +518,6 @@ if not edited_df.empty and takt_time_sec > 0:
     st.markdown("---")
     st.subheader("📋 4. Analisis & Evaluasi Teknik Industri (Industrial Engineering)")
     
-    # Perhitungan metrik evaluasi
     total_mp_used = df['Actual MP'].sum()
     labor_productivity = target_demand_per_hour / total_mp_used if total_mp_used > 0 else 0
     
