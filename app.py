@@ -124,10 +124,10 @@ if not edited_df.empty and takt_time_sec > 0:
     row2_c2.metric("⚡ Labor Productivity", f"{labor_productivity:.1f} Pairs/P/H")
     row2_c3.metric("💰 Labor Cost / Pair", f"${labor_cost_per_pair_usd:,.2f} USD")
 
-    # --- STEP 2: CANVAS ANIMATION (TANPA GARIS PENGHUBUNG) ---
+    # --- STEP 2: CANVAS ANIMATION ---
     st.markdown("---")
     st.subheader("2. 🎬 Shoe Production Line Simulation (One-Piece Flow)")
-    st.caption("Simulation runs for 1 Hour (3600 Seconds). Clean conveyor belt visualization with orthogonal transfer motion.")
+    st.caption("Simulation runs for 1 Hour (3600 Seconds). Clean conveyor view with orthogonal motion and station work counters.")
 
     line_stations = []
     global_station_index = 0
@@ -383,7 +383,20 @@ if not edited_df.empty and takt_time_sec > 0:
                     ctx.arc(opX, tableY, Math.max(6, tableWidth/2.8), Math.PI * 0.72, Math.PI * 1.28);
                     ctx.stroke();
 
-                    // (Jalur garis putus-putus penghubung telah dihapus total agar bersih)
+                    // Hitung jumlah sepatu yang sedang dipegang/dikerjakan di stasiun ini (working + fetching)
+                    let currentStationProducts = window.simState.products.filter(p => p.currentStationIdx === i && (p.status === 'working' || p.status === 'fetching_y'));
+                    let countAtStation = currentStationProducts.length;
+
+                    if (countAtStation > 0) {{
+                        ctx.fillStyle = stn.is_bottleneck ? "#dc2626" : "#047857";
+                        ctx.beginPath();
+                        ctx.roundRect(x + (tableWidth/2 + 2), tableY - 9, 24, 12, 2);
+                        ctx.fill();
+                        ctx.fillStyle = "#ffffff";
+                        ctx.font = "bold 9px Arial";
+                        ctx.textAlign = "center";
+                        ctx.fillText("👟" + countAtStation, x + (tableWidth/2 + 14), tableY - 1);
+                    }}
                 }});
 
                 // Render produk sepatu
@@ -688,7 +701,7 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v12")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v13")
 
     # --- STEP 4: INDUSTRIAL ENGINEERING (IE) EXECUTIVE SUMMARY ---
     st.markdown("---")
