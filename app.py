@@ -110,7 +110,7 @@ if not edited_df.empty and takt_time_sec > 0:
     total_hourly_labor_cost_usd = total_actual_mp * hourly_salary_usd
     labor_cost_per_pair_usd = total_hourly_labor_cost_usd / target_demand_per_hour if target_demand_per_hour > 0 else 0
 
-    # METRICS SUMMARY (2 Baris x 3 Kolom agar teks tidak terpotong)
+    # METRICS SUMMARY
     st.markdown("---")
     st.subheader("📊 Key Performance Indicators (KPIs)")
     
@@ -124,10 +124,10 @@ if not edited_df.empty and takt_time_sec > 0:
     row2_c2.metric("⚡ Labor Productivity", f"{labor_productivity:.1f} Pairs/P/H")
     row2_c3.metric("💰 Labor Cost / Pair", f"${labor_cost_per_pair_usd:,.2f} USD")
 
-    # --- STEP 2: CANVAS ANIMATION DENGAN REKAM VIDEO 2 MENIT ---
+    # --- STEP 2: CANVAS ANIMATION DENGAN PERSISTENT STATE ---
     st.markdown("---")
     st.subheader("2. 🎬 Shoe Production Line Simulation (One-Piece Flow)")
-    st.caption("Simulation runs for 1 Hour (3600 Seconds) with Auto-Stop. Click 'Record 2m Clip' to capture and download a video.")
+    st.caption("Simulation runs for 1 Hour (3600 Seconds). Changing speed or clicking buttons will preserve simulation state across updates.")
 
     line_stations = []
     global_station_index = 0
@@ -273,12 +273,19 @@ if not edited_df.empty and takt_time_sec > 0:
             const timerDisplay = document.getElementById("timer-display");
             const recordBtn = document.getElementById("record-btn");
 
-            let animationId = null;
-            let timeElapsed = 0;
-            let isRunning = false;
-            let isFinished = false;
+            // Gunakan window.simState agar state animasi bertahan lintas Streamlit rerun (misal saat geser slider)
+            if (!window.simState) {{
+                window.simState = {{
+                    timeElapsed: 0.0,
+                    isRunning: false,
+                    isFinished: false,
+                    products: [],
+                    finishedCount: 0,
+                    spawnTimer: 0.0,
+                    lastTimestamp: null
+                }};
+            }}
 
-            // MediaRecorder Variables
             let mediaRecorder = null;
             let recordedChunks = [];
             let isRecording = false;
@@ -290,11 +297,6 @@ if not edited_df.empty and takt_time_sec > 0:
             const tableWidth = Math.max(13, Math.min(32, colSpacing * 0.7));
             const tableHeight = Math.max(26, Math.min(42, tableWidth * 1.3));
             const fontSize = Math.max(9, Math.min(12, Math.floor(11 * (10 / Math.max(8, nStations)))));
-
-            let products = [];
-            let finishedCount = 0;
-            let lastTimestamp = null;
-            let spawnTimer = 0;
 
             function getStationCoords(i) {{
                 let isTop = (i % 2 === 0);
@@ -364,8 +366,8 @@ if not edited_df.empty and takt_time_sec > 0:
                     ctx.arc(opX, tableY, Math.max(6, tableWidth/2.8), Math.PI * 0.72, Math.PI * 1.28);
                     ctx.stroke();
 
-                    let waitingCount = products.filter(p => p.currentStationIdx === i && p.status === 'queued').length;
-                    let workingCount = products.filter(p => p.currentStationIdx === i && p.status === 'working').length;
+                    let waitingCount = window.simState.products.filter(p => p.currentStationIdx === i && p.status === 'queued').length;
+                    let workingCount = window.simState.products.filter(p => p.currentStationIdx === i && p.status === 'working').length;
                     let totalHold = waitingCount + workingCount;
 
                     if (totalHold > 0) {{
@@ -379,7 +381,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     }}
                 }});
 
-                products.forEach(function(prod) {{
+                window.simState.products.forEach(function(prod) {{
                     if (prod.status === 'conveyor' || prod.status === 'queued') {{
                         ctx.fillStyle = prod.status === 'queued' ? "#fee2e2" : "#ffffff";
                         ctx.strokeStyle = prod.status === 'queued' ? "#dc2626" : "#1f2937";
@@ -416,38 +418,39 @@ if not edited_df.empty and takt_time_sec > 0:
                     }}
                 }});
 
-                let totalWipInLine = products.length;
+                let totalWipInLine = window.simState.products.length;
                 ctx.fillStyle = "#111827";
                 ctx.font = "bold 11px Arial";
                 ctx.textAlign = "left";
-                ctx.fillText("⏱️ Time: " + timeElapsed.toFixed(0) + "s   |   📦 Output: " + finishedCount + " Pairs   |   🔄 WIP: " + totalWipInLine + " Pairs" + (isFinished ? " — ✅ COMPLETED" : ""), 10, 252);
+                ctx.fillText("⏱️ Time: " + window.simState.timeElapsed.toFixed(0) + "s   |   📦 Output: " + window.simState.finishedCount + " Pairs   |   🔄 WIP: " + totalWipInLine + " Pairs" + (window.simState.isFinished ? " — ✅ COMPLETED" : ""), 10, 252);
+                
+                timerDisplay.innerText = "⏱️ Simulation Time: " + window.simState.timeElapsed.toFixed(1) + "s / 3600.0s (Speed: " + speedMultiplier + "x)" + (window.simState.isFinished ? " — Completed!" : "");
             }}
 
             function update(timestamp) {{
-                if (!isRunning) return;
+                if (!window.simState.isRunning) return;
 
-                if (!lastTimestamp) lastTimestamp = timestamp;
-                let deltaTime = (timestamp - lastTimestamp) / 1000;
-                lastTimestamp = timestamp;
+                if (!window.simState.lastTimestamp) window.simState.lastTimestamp = timestamp;
+                let deltaTime = (timestamp - window.simState.lastTimestamp) / 1000;
+                window.simState.lastTimestamp = timestamp;
 
                 let adjustedDelta = deltaTime * speedMultiplier;
-                timeElapsed += adjustedDelta;
+                window.simState.timeElapsed += adjustedDelta;
 
-                if (timeElapsed >= MAX_TIME) {{
-                    timeElapsed = MAX_TIME;
-                    isRunning = false;
-                    isFinished = true;
+                if (window.simState.timeElapsed >= MAX_TIME) {{
+                    window.simState.timeElapsed = MAX_TIME;
+                    window.simState.isRunning = false;
+                    window.simState.isFinished = true;
                     drawScene();
-                    timerDisplay.innerText = "⏱️ Simulation Time: 3600.0s / 3600.0s (1 Hour Completed!) 🎉";
                     if (isRecording) stopRecording();
                     return;
                 }}
 
-                spawnTimer += adjustedDelta;
+                window.simState.spawnTimer += adjustedDelta;
 
-                if (spawnTimer >= Math.max(1.0, taktTime)) {{
-                    spawnTimer = 0;
-                    products.push({{
+                if (window.simState.spawnTimer >= Math.max(1.0, taktTime)) {{
+                    window.simState.spawnTimer = 0;
+                    window.simState.products.push({{
                         id: Math.random(),
                         x: 12,
                         status: 'conveyor',
@@ -459,12 +462,12 @@ if not edited_df.empty and takt_time_sec > 0:
 
                 let uniqueProcesses = [...new Set(stations.map(s => s.process_name))];
 
-                products.forEach(function(prod, idx) {{
+                window.simState.products.forEach(function(prod, idx) {{
                     if (prod.status === 'conveyor' || prod.status === 'queued') {{
                         let targetProcName = uniqueProcesses[prod.currentProcessStep];
                         let candidateStations = stations.map((s, i) => Object.assign({{}}, s, {{ idx: i }})).filter(s => s.process_name === targetProcName);
                         
-                        let availableStation = candidateStations.find(cs => !products.some(p => p.currentStationIdx === cs.idx && p.status === 'working'));
+                        let availableStation = candidateStations.find(cs => !window.simState.products.some(p => p.currentStationIdx === cs.idx && p.status === 'working'));
 
                         if (availableStation) {{
                             prod.currentStationIdx = availableStation.idx;
@@ -485,7 +488,7 @@ if not edited_df.empty and takt_time_sec > 0:
                             
                             let aheadCount = 0;
                             for (let j = 0; j < idx; j++) {{
-                                if (products[j].currentProcessStep === prod.currentProcessStep && (products[j].status === 'queued' || products[j].status === 'conveyor')) {{
+                                if (window.simState.products[j].currentProcessStep === prod.currentProcessStep && (window.simState.products[j].status === 'queued' || window.simState.products[j].status === 'conveyor')) {{
                                     aheadCount++;
                                 }}
                             }}
@@ -515,7 +518,7 @@ if not edited_df.empty and takt_time_sec > 0:
                         if (prod.workElapsed >= stn.std_time) {{
                             prod.currentProcessStep++;
                             if (prod.currentProcessStep >= uniqueProcesses.length) {{
-                                finishedCount++;
+                                window.simState.finishedCount++;
                                 prod.status = 'finished';
                             }} else {{
                                 let currentPos = getStationCoords(prod.currentStationIdx);
@@ -527,42 +530,37 @@ if not edited_df.empty and takt_time_sec > 0:
                     }}
                 }});
 
-                products = products.filter(p => p.status !== 'finished');
+                window.simState.products = window.simState.products.filter(p => p.status !== 'finished');
 
-                timerDisplay.innerText = "⏱️ Simulation Time: " + timeElapsed.toFixed(1) + "s / 3600.0s (Speed: " + speedMultiplier + "x)";
-                
                 drawScene();
-                animationId = requestAnimationFrame(update);
+                window.requestAnimationFrame(update);
             }}
 
             function startSimulation() {{
-                if (!isRunning && !isFinished) {{
-                    isRunning = true;
-                    lastTimestamp = null;
-                    animationId = requestAnimationFrame(update);
+                if (!window.simState.isRunning && !window.simState.isFinished) {{
+                    window.simState.isRunning = true;
+                    window.simState.lastTimestamp = null;
+                    window.requestAnimationFrame(update);
                 }}
             }}
 
             function pauseSimulation() {{
-                isRunning = false;
-                lastTimestamp = null;
-                cancelAnimationFrame(animationId);
+                window.simState.isRunning = false;
+                window.simState.lastTimestamp = null;
             }}
 
             function resetSimulation() {{
                 if (isRecording) stopRecording();
                 pauseSimulation();
-                timeElapsed = 0;
-                finishedCount = 0;
-                spawnTimer = 0;
-                products = [];
-                isFinished = false;
-                lastTimestamp = null;
-                timerDisplay.innerText = "⏱️ Simulation Time: 0.0s / 3600.0s (1 Hour)";
+                window.simState.timeElapsed = 0;
+                window.simState.finishedCount = 0;
+                window.simState.spawnTimer = 0;
+                window.simState.products = [];
+                window.simState.isFinished = false;
+                window.simState.lastTimestamp = null;
                 drawScene();
             }}
 
-            // --- FUNGSI REKAM VIDEO KANVAS (2 MENIT / 120 DETIK) ---
             function toggleRecording() {{
                 if (!isRecording) {{
                     startRecording();
@@ -572,12 +570,12 @@ if not edited_df.empty and takt_time_sec > 0:
             }}
 
             function startRecording() {{
-                if (!isRunning && !isFinished) {{
+                if (!window.simState.isRunning && !window.simState.isFinished) {{
                     startSimulation();
                 }}
                 
                 recordedChunks = [];
-                const stream = canvas.captureStream(30); // 30 FPS
+                const stream = canvas.captureStream(30);
                 
                 let options = {{ mimeType: 'video/webm; codecs=vp9' }};
                 if (!MediaRecorder.isTypeSupported(options.mimeType)) {{
@@ -615,7 +613,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 isRecording = true;
                 recordBtn.classList.add("recording-active");
 
-                let secondsLeft = 120; // 2 Menit
+                let secondsLeft = 120;
                 recordBtn.innerText = "⏹ Stop Rec (" + Math.floor(secondsLeft/60) + "m " + (secondsLeft%60) + "s)";
 
                 recordCountdownInterval = setInterval(() => {{
@@ -627,7 +625,6 @@ if not edited_df.empty and takt_time_sec > 0:
                     }}
                 }}, 1000);
 
-                // Otomatis berhenti & download setelah 2 menit (120.000 ms)
                 recordTimeout = setTimeout(() => {{
                     if (isRecording) stopRecording();
                 }}, 120000);
@@ -644,7 +641,12 @@ if not edited_df.empty and takt_time_sec > 0:
                 recordBtn.innerText = "🎥 Record 2m Clip & Download";
             }}
 
+            // Render awal saat halaman dimuat
             drawScene();
+            // Jika sebelumnya sedang berjalan, lanjutkan animasinya secara otomatis
+            if (window.simState.isRunning) {{
+                window.requestAnimationFrame(update);
+            }}
         </script>
     </body>
     </html>
@@ -675,7 +677,7 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v2")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v3")
 
     # --- STEP 4: INDUSTRIAL ENGINEERING (IE) EXECUTIVE SUMMARY ---
     st.markdown("---")
