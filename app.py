@@ -6,16 +6,18 @@ import math
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
 st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
-st.caption("Real-time line simulation: Target Demand/Hour, 1-Hour Auto-Stop, IE Metrics, & Productivity.")
+st.caption("Real-time line simulation: Target Demand/Hour, Monthly Salary, Labor Cost/Pair (173h Standard), & IE Metrics.")
 
 # --- PRODUCTION PARAMETERS ---
 st.markdown("### ⚙️ Production Line Parameters")
-col_p1, col_p2 = st.columns(2)
+col_p1, col_p2, col_p3 = st.columns(3)
 with col_p1:
     target_demand_per_hour = st.number_input("Target Production (Pairs/Hour)", value=50, step=5, key="input_demand_hour")
+with col_p2:
+    monthly_salary = st.number_input("Monthly Salary per Operator ($ / IDR)", value=4500000.0, step=100000.0, format="%.2f", key="input_monthly_salary")
 
 takt_time_sec = 3600 / target_demand_per_hour if target_demand_per_hour > 0 else 0
-st.info(f"⏱️ **Target Takt Time**: {takt_time_sec:.2f} seconds/pair (Simulation runs for 1 Hour / 3600 Seconds)")
+st.info(f"⏱️ **Target Takt Time**: {takt_time_sec:.2f} seconds/pair | **Working Hours Formula**: (52 weeks × 5 days × 8 hours) / 12 months = **173 Hours/Month**")
 
 # --- STEP 1: SINGLE INPUT TABLE ---
 st.markdown("---")
@@ -70,17 +72,23 @@ if not edited_df.empty and takt_time_sec > 0:
     num_stations = len(df)
     line_efficiency = (total_effective_ct / (max_ct * num_stations)) * 100
 
-    # 3. Labor Productivity
+    # 3. Labor Productivity & Labor Cost per Pair (Standard 173 Hours)
     labor_productivity = target_demand_per_hour / total_actual_mp if total_actual_mp > 0 else 0
+    
+    monthly_working_hours = 173.0
+    hourly_salary_per_person = monthly_salary / monthly_working_hours if monthly_working_hours > 0 else 0
+    total_hourly_labor_cost = total_actual_mp * hourly_salary_per_person
+    labor_cost_per_pair = total_hourly_labor_cost / target_demand_per_hour if target_demand_per_hour > 0 else 0
 
-    # METRICS SUMMARY (5 Columns)
+    # METRICS SUMMARY (6 Columns)
     st.markdown("---")
-    col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
+    col_m1, col_m2, col_m3, col_m4, col_m5, col_m6 = st.columns(6)
     col_m1.metric("🎯 MP Utilization", f"{mp_utilization:.1f}%")
     col_m2.metric("📊 Line Efficiency", f"{line_efficiency:.1f}%")
     col_m3.metric("🚨 Bottleneck", f"{bottleneck_process}", delta=f"{max_ct:.1f} s/pair", delta_color="inverse")
-    col_m4.metric("👥 Total MP", f"{total_actual_mp} Persons")
-    col_m5.metric("⚡ Productivity", f"{labor_productivity:.2f} Pairs/P/H")
+    col_m4.metric("👥 Total MP", f"{total_actual_mp} Pers")
+    col_m5.metric("⚡ Productivity", f"{labor_productivity:.1f} Pairs/P/H")
+    col_m6.metric("💰 Labor Cost/Pair", f"{labor_cost_per_pair:,.2f}")
 
     # --- STEP 2: CANVAS ANIMATION WITH 1-HOUR AUTO-STOP ---
     st.markdown("---")
@@ -522,7 +530,7 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_concise_v2")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_labor_cost_173")
 
     # --- STEP 4: INDUSTRIAL ENGINEERING (IE) EXECUTIVE SUMMARY ---
     st.markdown("---")
@@ -531,8 +539,9 @@ if not edited_df.empty and takt_time_sec > 0:
     st.markdown(f"""
     * **Target vs Actual Gap**: Target is set at `{target_demand_per_hour} Pairs/Hour` (Takt Time: `{takt_time_sec:.2f}s`). Output gaps are caused by line balancing losses, start-up filling delays, and micro-stoppages (*blocking/starving*) inherent in strict One-Piece Flow layouts.
     * **Bottleneck Identification & Action**: Process **`{bottleneck_process}`** acts as the primary constraint with an Effective CT of **`{max_ct:.2f}s`**. Instead of adding headcount (which degrades MP utilization), prioritize **method engineering** or **operator upskilling** to reduce cycle time.
-    * **Key Performance Indicators (KPIs)**:
+    * **Key Performance Indicators (KPIs & Cost)**:
       * **Manpower Utilization**: **`{mp_utilization:.1f}%`** *(Recommended standard: **$\ge$ 85%**).* If below target, optimize work allocation rather than adding workers.
       * **Line Efficiency**: **`{line_efficiency:.1f}%`** *(Cycle time balance across stations).*
-      * **Labor Productivity**: **`{labor_productivity:.2f} Pairs/Person/Hour`**.
+      * **Labor Productivity**: **`{labor_productivity:.1f} Pairs/Person/Hour`**.
+      * **Labor Cost per Pair**: **`{labor_cost_per_pair:,.2f}`** *(Calculated based on total actual manpower, monthly salary of `{monthly_salary:,.2f}`, standard divider of **173 hours/month**, and target production rate).*
     """)
