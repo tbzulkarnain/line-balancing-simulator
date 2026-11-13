@@ -5,7 +5,7 @@ import json
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
 st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
-st.caption("Simulasi lini riil: Meja operator dirapatkan ke konveyor, ukuran meja diperbesar, font diperbesar dan diperjelas, serta satuan output dalam Pasang (Pairs).")
+st.caption("Simulasi lini riil: Meja operator berbentuk vertikal memanjang dari atas ke bawah, dirapatkan ke konveyor, dan teks informasi tertata rapi di luar meja.")
 
 # --- SIDEBAR: PARAMETER OPERASIONAL ---
 st.sidebar.header("⚙️ Parameter Operasional")
@@ -64,10 +64,10 @@ if not edited_df.empty and takt_time_sec > 0:
     col3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI KANVAS DENGAN LAYOUT RAPAT, MEJA BESAR, & FONT JELAS ---
+    # --- STEP 2: ANIMASI KANVAS DENGAN MEJA VERTIKAL & TEKS AMAN ---
     st.markdown("---")
     st.subheader("2. 🎬 Simulasi Lini Produksi Sepatu (One-Piece Flow)")
-    st.caption("Meja operator diperbesar, dirapatkan langsung ke konveyor tengah, dan teks informasi tertata rapi.")
+    st.caption("Meja berbentuk vertikal (memanjang dari atas ke bawah), dirapatkan ke konveyor, dan teks informasi berada di luar area meja.")
 
     line_stations = []
     global_station_index = 0
@@ -171,7 +171,7 @@ if not edited_df.empty and takt_time_sec > 0:
     <body>
         <div id="canvas-container">
             <h3 id="timer-display" style="margin: 0 0 10px 0; color: #1e293b; font-size: 20px;">⏱️ Waktu Aktual: 0.0 Detik | Takt Time: {takt_val:.1f}s</h3>
-            <canvas id="simCanvas" width="1100" height="520"></canvas>
+            <canvas id="simCanvas" width="1100" height="540"></canvas>
             <div class="panel">
                 <div class="controls">
                     <button onclick="startSimulation()">▶ Play</button>
@@ -205,48 +205,48 @@ if not edited_df.empty and takt_time_sec > 0:
             function getStationCoords(i) {{
                 let isTop = (i % 2 === 0);
                 let x = 60 + i * colSpacing + (colSpacing / 2);
-                // Meja diperbesar dan dirapatkan persis di tepi konveyor tengah (Konveyor di Y: 200 s.d 270)
-                let tableY = isTop ? 140 : 330;
+                // Meja vertikal memanjang dari atas ke bawah, dirapatkan langsung ke konveyor (Y konveyor di 210 s.d 270)
+                let tableY = isTop ? 135 : 345;
                 return {{ x: x, tableY: tableY, isTop: isTop }};
             }}
 
             function drawScene() {{
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // 1. Konveyor Tengah Memanjang (Posisi Y: 200 s.d 270)
+                // 1. Konveyor Tengah Memanjang (Posisi Y: 210 s.d 270)
                 ctx.fillStyle = "#f1f8e9";
                 ctx.strokeStyle = "#1f2937";
                 ctx.lineWidth = 2.5;
-                ctx.fillRect(25, 200, canvas.width - 50, 70);
-                ctx.strokeRect(25, 200, canvas.width - 50, 70);
+                ctx.fillRect(25, 210, canvas.width - 50, 60);
+                ctx.strokeRect(25, 210, canvas.width - 50, 60);
 
                 ctx.strokeStyle = "#94a3b8";
                 ctx.setLineDash([10, 10]);
                 ctx.beginPath();
-                ctx.moveTo(25, 235);
-                ctx.lineTo(canvas.width - 25, 235);
+                ctx.moveTo(25, 240);
+                ctx.lineTo(canvas.width - 25, 240);
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // 2. Gambar Meja & Operator Sisi Atas dan Bawah (Meja Lebih Besar & Rapat)
+                // 2. Gambar Meja & Operator Sisi Atas dan Bawah (Meja Vertikal Memanjang)
                 stations.forEach(function(stn, i) {{
                     let pos = getStationCoords(i);
                     let x = pos.x;
                     let tableY = pos.tableY;
                     let isTop = pos.isTop;
 
-                    // Kotak Meja Kerja Diperbesar (Lebar 64, Tinggi 56)
+                    // Kotak Meja Kerja Berbentuk Vertikal (Lebar 52, Tinggi 76)
                     ctx.fillStyle = stn.is_bottleneck ? "#dc2626" : "#2563eb";
-                    ctx.fillRect(x - 32, tableY - 28, 64, 56);
+                    ctx.fillRect(x - 26, tableY - 38, 52, 76);
                     ctx.strokeStyle = "#ffffff";
                     ctx.lineWidth = 2.5;
-                    ctx.strokeRect(x - 32, tableY - 28, 64, 56);
+                    ctx.strokeRect(x - 26, tableY - 38, 52, 76);
 
-                    // Teks Nama Proses & CT Diatur di Luar Meja (Tidak Tertutup)
+                    // Teks Nama Proses & CT Diposisikan di LUAR Meja (Aman tidak tertutup)
                     ctx.fillStyle = "#111827";
                     ctx.font = "bold 11px Arial";
                     ctx.textAlign = "center";
-                    let labelY = isTop ? (tableY - 36) : (tableY + 48);
+                    let labelY = isTop ? (tableY - 52) : (tableY + 58);
                     ctx.fillText(stn.process_name, x, labelY);
                     
                     ctx.font = "bold 11px Arial";
@@ -257,7 +257,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     ctx.fillText(stn.display_name, x, labelY + (isTop ? 28 : -28));
 
                     // Kursi & Operator di sebelah KIRI meja
-                    let opX = x - 48;
+                    let opX = x - 42;
                     ctx.fillStyle = "#000000";
                     ctx.beginPath();
                     ctx.arc(opX, tableY, 11, 0, Math.PI * 2);
@@ -277,11 +277,11 @@ if not edited_df.empty and takt_time_sec > 0:
                     if (totalHold > 0) {{
                         ctx.fillStyle = waitingCount > 0 ? "#b91c1c" : "#047857";
                         ctx.beginPath();
-                        ctx.roundRect(x + 12, tableY - 38, 38, 20, 6);
+                        ctx.roundRect(x + 10, tableY - 45, 36, 18, 5);
                         ctx.fill();
                         ctx.fillStyle = "#ffffff";
-                        ctx.font = "bold 11px Arial";
-                        ctx.fillText("👟 " + totalHold, x + 31, tableY - 24);
+                        ctx.font = "bold 10px Arial";
+                        ctx.fillText("👟 " + totalHold, x + 28, tableY - 32);
                     }}
                 }});
 
@@ -292,13 +292,13 @@ if not edited_df.empty and takt_time_sec > 0:
                         ctx.strokeStyle = prod.status === 'queued' ? "#dc2626" : "#1f2937";
                         ctx.lineWidth = 2;
                         ctx.beginPath();
-                        ctx.roundRect(prod.x - 15, 221, 30, 30, 6);
+                        ctx.roundRect(prod.x - 14, 226, 28, 28, 5);
                         ctx.fill();
                         ctx.stroke();
 
-                        ctx.font = "16px Arial";
+                        ctx.font = "15px Arial";
                         ctx.textAlign = "center";
-                        ctx.fillText("👟", prod.x, 242);
+                        ctx.fillText("👟", prod.x, 246);
                     }} else if (prod.status === 'working') {{
                         let pos = getStationCoords(prod.currentStationIdx);
                         let stn = stations[prod.currentStationIdx];
@@ -307,19 +307,19 @@ if not edited_df.empty and takt_time_sec > 0:
                         ctx.strokeStyle = "#d97706";
                         ctx.lineWidth = 2;
                         ctx.beginPath();
-                        ctx.roundRect(pos.x - 15, pos.tableY - 15, 30, 30, 6);
+                        ctx.roundRect(pos.x - 14, pos.tableY - 14, 28, 28, 5);
                         ctx.fill();
                         ctx.stroke();
 
-                        ctx.font = "16px Arial";
+                        ctx.font = "15px Arial";
                         ctx.textAlign = "center";
-                        ctx.fillText("👟", pos.x, pos.tableY + 6);
+                        ctx.fillText("👟", pos.x, pos.tableY + 5);
 
                         let prog = Math.min(100, (prod.workElapsed / stn.std_time) * 100);
                         ctx.fillStyle = "#1e293b";
-                        ctx.fillRect(pos.x - 22, pos.tableY + 18, 44, 6);
+                        ctx.fillRect(pos.x - 18, pos.tableY + 22, 36, 5);
                         ctx.fillStyle = "#10b981";
-                        ctx.fillRect(pos.x - 22, pos.tableY + 18, 44 * (prog / 100), 6);
+                        ctx.fillRect(pos.x - 18, pos.tableY + 22, 36 * (prog / 100), 5);
                     }}
                 }});
 
@@ -327,7 +327,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 ctx.fillStyle = "#111827";
                 ctx.font = "bold 14px Arial";
                 ctx.textAlign = "left";
-                ctx.fillText("📦 Total Output Selesai: " + finishedCount + " Pasang   |   🔄 Total WIP di Lini: " + totalWipInLine + " Pasang", 30, 495);
+                ctx.fillText("📦 Total Output Selesai: " + finishedCount + " Pasang   |   🔄 Total WIP di Lini: " + totalWipInLine + " Pasang", 30, 515);
             }}
 
             function update(timestamp) {{
@@ -386,7 +386,7 @@ if not edited_df.empty and takt_time_sec > 0:
                                 }}
                             }}
 
-                            let stopX = targetPos.x - (aheadCount * 34) - 35;
+                            let stopX = targetPos.x - (aheadCount * 32) - 35;
                             if (stopX < 35) stopX = 35;
 
                             if (prod.x < stopX) {{
@@ -462,7 +462,7 @@ if not edited_df.empty and takt_time_sec > 0:
     </html>
     """
 
-    st.components.v1.html(html_code, height=540, scrolling=False)
+    st.components.v1.html(html_code, height=580, scrolling=False)
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
@@ -488,4 +488,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_proportional")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_vertical")
