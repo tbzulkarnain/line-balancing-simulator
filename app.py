@@ -124,10 +124,10 @@ if not edited_df.empty and takt_time_sec > 0:
     row2_c2.metric("⚡ Labor Productivity", f"{labor_productivity:.1f} Pairs/P/H")
     row2_c3.metric("💰 Labor Cost / Pair", f"${labor_cost_per_pair_usd:,.2f} USD")
 
-    # --- STEP 2: CANVAS ANIMATION DENGAN PERSISTENT STATE ---
+    # --- STEP 2: CANVAS ANIMATION DENGAN SPEED CONTROL DI DALAM HTML ---
     st.markdown("---")
     st.subheader("2. 🎬 Shoe Production Line Simulation (One-Piece Flow)")
-    st.caption("Simulation runs for 1 Hour (3600 Seconds). Changing speed or clicking buttons will preserve simulation state across updates.")
+    st.caption("Simulation runs for 1 Hour (3600 Seconds). You can adjust speed smoothly inside the simulation panel without resetting.")
 
     line_stations = []
     global_station_index = 0
@@ -164,9 +164,6 @@ if not edited_df.empty and takt_time_sec > 0:
     stations_json = json.dumps(flat_stations)
     takt_val = float(takt_time_sec)
 
-    speed_multiplier = st.slider("⚡ Simulation Speed (Multiplier)", min_value=1.0, max_value=50.0, value=20.0, step=1.0, key="speed_slider_bottom")
-    current_speed = float(speed_multiplier)
-
     html_code = f"""
     <!DOCTYPE html>
     <html>
@@ -201,7 +198,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 display: flex;
                 justify-content: center;
                 align-items: center;
-                gap: 12px;
+                gap: 16px;
                 flex-wrap: wrap;
             }}
             .controls {{
@@ -209,6 +206,18 @@ if not edited_df.empty and takt_time_sec > 0:
                 gap: 10px;
                 flex-wrap: wrap;
                 justify-content: center;
+                align-items: center;
+            }}
+            .speed-control {{
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 13px;
+                font-weight: bold;
+                color: #1e293b;
+            }}
+            .speed-control input {{
+                cursor: pointer;
             }}
             button {{
                 background-color: #2563eb;
@@ -257,7 +266,11 @@ if not edited_df.empty and takt_time_sec > 0:
                     <button onclick="startSimulation()">▶ Play</button>
                     <button onclick="pauseSimulation()">⏸ Pause</button>
                     <button class="reset" onclick="resetSimulation()">🔄 Reset</button>
-                    <button id="record-btn" class="record" onclick="toggleRecording()">🎥 Record 2m Clip & Download</button>
+                    <div class="speed-control">
+                        <span>⚡ Speed: <span id="speed-val">20</span>x</span>
+                        <input type="range" id="speedRange" min="1" max="50" value="20" step="1" oninput="updateSpeed(this.value)">
+                    </div>
+                    <button id="record-btn" class="record" onclick="toggleRecording()">🎥 Record 2m Clip</button>
                 </div>
             </div>
         </div>
@@ -265,15 +278,16 @@ if not edited_df.empty and takt_time_sec > 0:
         <script>
             const stations = {stations_json};
             const taktTime = {takt_val};
-            let speedMultiplier = {current_speed};
             const MAX_TIME = 3600.0;
 
             const canvas = document.getElementById("simCanvas");
             const ctx = canvas.getContext("2d");
             const timerDisplay = document.getElementById("timer-display");
             const recordBtn = document.getElementById("record-btn");
+            const speedValSpan = document.getElementById("speed-val");
+            const speedRangeInput = document.getElementById("speedRange");
 
-            // Gunakan window.simState agar state animasi bertahan lintas Streamlit rerun (misal saat geser slider)
+            // Global simulation persistent state inside browser window
             if (!window.simState) {{
                 window.simState = {{
                     timeElapsed: 0.0,
@@ -282,8 +296,13 @@ if not edited_df.empty and takt_time_sec > 0:
                     products: [],
                     finishedCount: 0,
                     spawnTimer: 0.0,
-                    lastTimestamp: null
+                    lastTimestamp: null,
+                    speedMultiplier: 20.0
                 }};
+            }} else {{
+                // Sync slider UI dengan state aktif jika ada reload
+                speedRangeInput.value = window.simState.speedMultiplier;
+                speedValSpan.innerText = window.simState.speedMultiplier;
             }}
 
             let mediaRecorder = null;
@@ -297,6 +316,11 @@ if not edited_df.empty and takt_time_sec > 0:
             const tableWidth = Math.max(13, Math.min(32, colSpacing * 0.7));
             const tableHeight = Math.max(26, Math.min(42, tableWidth * 1.3));
             const fontSize = Math.max(9, Math.min(12, Math.floor(11 * (10 / Math.max(8, nStations)))));
+
+            function updateSpeed(val) {{
+                window.simState.speedMultiplier = parseFloat(val);
+                speedValSpan.innerText = val;
+            }}
 
             function getStationCoords(i) {{
                 let isTop = (i % 2 === 0);
@@ -424,7 +448,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 ctx.textAlign = "left";
                 ctx.fillText("⏱️ Time: " + window.simState.timeElapsed.toFixed(0) + "s   |   📦 Output: " + window.simState.finishedCount + " Pairs   |   🔄 WIP: " + totalWipInLine + " Pairs" + (window.simState.isFinished ? " — ✅ COMPLETED" : ""), 10, 252);
                 
-                timerDisplay.innerText = "⏱️ Simulation Time: " + window.simState.timeElapsed.toFixed(1) + "s / 3600.0s (Speed: " + speedMultiplier + "x)" + (window.simState.isFinished ? " — Completed!" : "");
+                timerDisplay.innerText = "⏱️ Simulation Time: " + window.simState.timeElapsed.toFixed(1) + "s / 3600.0s (Speed: " + window.simState.speedMultiplier + "x)" + (window.simState.isFinished ? " — Completed!" : "");
             }}
 
             function update(timestamp) {{
@@ -434,7 +458,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 let deltaTime = (timestamp - window.simState.lastTimestamp) / 1000;
                 window.simState.lastTimestamp = timestamp;
 
-                let adjustedDelta = deltaTime * speedMultiplier;
+                let adjustedDelta = deltaTime * window.simState.speedMultiplier;
                 window.simState.timeElapsed += adjustedDelta;
 
                 if (window.simState.timeElapsed >= MAX_TIME) {{
@@ -638,12 +662,11 @@ if not edited_df.empty and takt_time_sec > 0:
                 clearTimeout(recordTimeout);
                 clearInterval(recordCountdownInterval);
                 recordBtn.classList.remove("recording-active");
-                recordBtn.innerText = "🎥 Record 2m Clip & Download";
+                recordBtn.innerText = "🎥 Record 2m Clip";
             }}
 
-            // Render awal saat halaman dimuat
+            // Render awal saat halaman dimuat & lanjutkan loop jika sedang berjalan
             drawScene();
-            // Jika sebelumnya sedang berjalan, lanjutkan animasinya secara otomatis
             if (window.simState.isRunning) {{
                 window.requestAnimationFrame(update);
             }}
@@ -677,7 +700,7 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v3")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v4")
 
     # --- STEP 4: INDUSTRIAL ENGINEERING (IE) EXECUTIVE SUMMARY ---
     st.markdown("---")
