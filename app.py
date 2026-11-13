@@ -6,18 +6,17 @@ import math
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
 st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
-st.caption("Simulasi lini riil: Teks nama proses diperjelas, dan slider kecepatan dipindah ke bawah animasi.")
+st.caption("Simulasi lini riil: Target berbasis Pasang/Jam dan berhenti otomatis (Auto-Stop) saat mencapai durasi 1 jam (3600 detik).")
 
-# --- KONTROL PARAMETER DI ATAS (WAKTU & TARGET) ---
+# --- KONTROL PARAMETER DI ATAS (TARGET PASANG/JAM) ---
 st.markdown("### ⚙️ Parameter Lini Produksi")
 col_p1, col_p2 = st.columns(2)
 with col_p1:
-    available_time_min = st.number_input("Waktu Kerja Efektif (Menit/Shift)", value=480, step=10, key="input_time")
-with col_p2:
-    target_demand = st.number_input("Target Production (Pasang/Shift)", value=400, step=10, key="input_demand")
+    target_demand_per_hour = st.number_input("Target Production (Pasang/Jam)", value=50, step=5, key="input_demand_hour")
 
-takt_time_sec = (available_time_min * 60) / target_demand if target_demand > 0 else 0
-st.info(f"⏱️ **Takt Time Target Lini**: {takt_time_sec:.2f} detik/pasang")
+# Karena durasi simulasi fix 1 jam (3600 detik), Takt Time dihitung dari target per jam
+takt_time_sec = 3600 / target_demand_per_hour if target_demand_per_hour > 0 else 0
+st.info(f"⏱️ **Takt Time Target Lini**: {takt_time_sec:.2f} detik/pasang (Simulasi berjalan untuk durasi 1 Jam / 3600 Detik)")
 
 # --- STEP 1: TABEL INPUT TUNGGAL ---
 st.markdown("---")
@@ -80,10 +79,10 @@ if not edited_df.empty and takt_time_sec > 0:
     col_m3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
     col_m4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
 
-    # --- STEP 2: ANIMASI KANVAS DENGAN KONTROL DI BAWAH ---
+    # --- STEP 2: ANIMASI KANVAS DENGAN AUTO-STOP 1 JAM (3600s) ---
     st.markdown("---")
     st.subheader("2. 🎬 Simulasi Lini Produksi Sepatu (One-Piece Flow)")
-    st.caption("Visualisasi lini dengan teks nama proses yang diperjelas dan slider kecepatan di bawah animasi.")
+    st.caption("Simulasi akan berhenti otomatis (Auto-Stop) saat waktu mencapai genap 1 Jam (3600 Detik).")
 
     line_stations = []
     global_station_index = 0
@@ -120,8 +119,7 @@ if not edited_df.empty and takt_time_sec > 0:
     stations_json = json.dumps(flat_stations)
     takt_val = float(takt_time_sec)
 
-    # Widget Slider Kecepatan dipindah ke bawah (di luar komponen HTML agar interaktif dengan Streamlit)
-    speed_multiplier = st.slider("⚡ Kecepatan Simulasi (Multiplier)", min_value=1.0, max_value=20.0, value=5.0, step=0.5, key="speed_slider_bottom")
+    speed_multiplier = st.slider("⚡ Kecepatan Simulasi (Multiplier)", min_value=1.0, max_value=50.0, value=10.0, step=1.0, key="speed_slider_bottom")
     current_speed = float(speed_multiplier)
 
     html_code = f"""
@@ -189,7 +187,7 @@ if not edited_df.empty and takt_time_sec > 0:
     </head>
     <body>
         <div id="canvas-container">
-            <h4 id="timer-display" style="margin: 0 0 6px 0; color: #1e293b; font-size: 14px;">⏱️ Waktu Aktual: 0.0 Detik | Takt Time: {takt_val:.1f}s</h4>
+            <h4 id="timer-display" style="margin: 0 0 6px 0; color: #1e293b; font-size: 14px;">⏱️ Waktu Simulasi: 0.0s / 3600.0s (1 Jam)</h4>
             <canvas id="simCanvas" width="1040" height="260"></canvas>
             <div class="panel">
                 <div class="controls">
@@ -204,6 +202,7 @@ if not edited_df.empty and takt_time_sec > 0:
             const stations = {stations_json};
             const taktTime = {takt_val};
             let speedMultiplier = {current_speed};
+            const MAX_TIME = 3600.0; // Batasan 1 Jam (3600 detik)
 
             const canvas = document.getElementById("simCanvas");
             const ctx = canvas.getContext("2d");
@@ -212,13 +211,12 @@ if not edited_df.empty and takt_time_sec > 0:
             let animationId = null;
             let timeElapsed = 0;
             let isRunning = false;
+            let isFinished = false;
 
             const nStations = stations.length;
             const colSpacing = (canvas.width - 30) / Math.max(1, nStations);
             const tableWidth = Math.max(13, Math.min(32, colSpacing * 0.7));
             const tableHeight = Math.max(26, Math.min(42, tableWidth * 1.3));
-            
-            // Ukuran font diperjelas dan diberi batas minimum agar tetap terbaca jelas
             const fontSize = Math.max(9, Math.min(12, Math.floor(11 * (10 / Math.max(8, nStations)))));
 
             let products = [];
@@ -251,7 +249,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // 2. Gambar Meja & Operator dengan Teks Jelas
+                // 2. Gambar Meja & Operator
                 stations.forEach(function(stn, i) {{
                     let pos = getStationCoords(i);
                     let x = pos.x;
@@ -266,22 +264,18 @@ if not edited_df.empty and takt_time_sec > 0:
 
                     ctx.textAlign = "center";
                     if (isTop) {{
-                        // Nama Proses di atas meja (Dipertebal & Lebih Besar)
                         ctx.fillStyle = "#0f172a";
                         ctx.font = "bold " + fontSize + "px Arial";
                         ctx.fillText(stn.display_name, x, tableY - tableHeight/2 - 14);
 
-                        // CT di bawah nama proses
                         ctx.fillStyle = "#334155";
                         ctx.font = "bold " + (fontSize - 1) + "px Arial";
                         ctx.fillText("CT:" + stn.std_time.toFixed(1) + "s", x, tableY - tableHeight/2 - 4);
                     }} else {{
-                        // CT di atas nama proses (untuk baris bawah)
                         ctx.fillStyle = "#334155";
                         ctx.font = "bold " + (fontSize - 1) + "px Arial";
                         ctx.fillText("CT:" + stn.std_time.toFixed(1) + "s", x, tableY + tableHeight/2 + 10);
 
-                        // Nama Proses di bawah meja
                         ctx.fillStyle = "#0f172a";
                         ctx.font = "bold " + fontSize + "px Arial";
                         ctx.fillText(stn.display_name, x, tableY + tableHeight/2 + 21);
@@ -356,7 +350,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 ctx.fillStyle = "#111827";
                 ctx.font = "bold 11px Arial";
                 ctx.textAlign = "left";
-                ctx.fillText("📦 Total Output Selesai: " + finishedCount + " Pasang   |   🔄 Total WIP di Lini: " + totalWipInLine + " Pasang", 10, 252);
+                ctx.fillText("📦 Total Output 1 Jam: " + finishedCount + " Pasang   |   🔄 Total WIP di Lini: " + totalWipInLine + " Pasang" + (isFinished ? " — ✅ SELESAI (1 JAM)" : ""), 10, 252);
             }}
 
             function update(timestamp) {{
@@ -368,6 +362,17 @@ if not edited_df.empty and takt_time_sec > 0:
 
                 let adjustedDelta = deltaTime * speedMultiplier;
                 timeElapsed += adjustedDelta;
+
+                // AUTO-STOP JIKA MENCAPAI 1 JAM (3600 DETIK)
+                if (timeElapsed >= MAX_TIME) {{
+                    timeElapsed = MAX_TIME;
+                    isRunning = false;
+                    isFinished = true;
+                    drawScene();
+                    timerDisplay.innerText = "⏱️ Waktu Simulasi: 3600.0s / 3600.0s (1 Jam Selesai!) 🎉";
+                    return;
+                }}
+
                 spawnTimer += adjustedDelta;
 
                 if (spawnTimer >= Math.max(1.0, taktTime)) {{
@@ -454,14 +459,14 @@ if not edited_df.empty and takt_time_sec > 0:
 
                 products = products.filter(p => p.status !== 'finished');
 
-                timerDisplay.innerText = "⏱️ Waktu Aktual: " + timeElapsed.toFixed(1) + " Detik | Takt Time: " + taktTime.toFixed(1) + "s (Kecepatan: " + speedMultiplier + "x)";
+                timerDisplay.innerText = "⏱️ Waktu Simulasi: " + timeElapsed.toFixed(1) + "s / 3600.0s (Kecepatan: " + speedMultiplier + "x)";
                 
                 drawScene();
                 animationId = requestAnimationFrame(update);
             }}
 
             function startSimulation() {{
-                if (!isRunning) {{
+                if (!isRunning && !isFinished) {{
                     isRunning = true;
                     lastTimestamp = null;
                     animationId = requestAnimationFrame(update);
@@ -480,8 +485,9 @@ if not edited_df.empty and takt_time_sec > 0:
                 finishedCount = 0;
                 spawnTimer = 0;
                 products = [];
+                isFinished = false;
                 lastTimestamp = null;
-                timerDisplay.innerText = "⏱️ Waktu Aktual: 0.0 Detik | Takt Time: " + taktTime.toFixed(1) + "s";
+                timerDisplay.innerText = "⏱️ Waktu Simulasi: 0.0s / 3600.0s (1 Jam)";
                 drawScene();
             }}
 
@@ -517,4 +523,4 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_speed_bottom")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_autostop_hour")
