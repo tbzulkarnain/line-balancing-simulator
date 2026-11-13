@@ -24,7 +24,7 @@ digits_html = "".join([
 # --- HEADER & VISITOR COUNTER DI UJUNG KANAN ATAS ---
 col_title, col_vis = st.columns([4, 1])
 with col_title:
-    st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
+    st.title("🏭 Production Line Balancing Simulator")
     st.caption("Real-time line simulation: Target Demand/Hour, FX Rate, Labor Cost in USD ($), & IE Metrics.")
 
 with col_vis:
@@ -39,7 +39,7 @@ with col_vis:
 st.markdown("### ⚙️ Production Line Parameters")
 col_p1, col_p2, col_p3 = st.columns(3)
 with col_p1:
-    target_demand_per_hour = st.number_input("Target Production (Pairs/Hour)", value=50, step=5, key="input_demand_hour")
+    target_demand_per_hour = st.number_input("Target Production (Pairs/Hour)", value=300, step=5, key="input_demand_hour")
 with col_p2:
     monthly_salary_idr = st.number_input("Monthly Salary per Operator (IDR)", value=5500000.0, step=100000.0, format="%.2f", key="input_monthly_salary_idr")
 with col_p3:
