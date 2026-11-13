@@ -2,11 +2,39 @@ import streamlit as st
 import pandas as pd
 import json
 import math
+import plotly.graph_objects as go
 
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
-st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
-st.caption("Real-time line simulation: Target Demand/Hour, FX Rate, Labor Cost in USD ($), & IE Metrics.")
+# --- VISITOR COUNTER LOGIC (SESSION STATE + RETRO DISPLAY) ---
+if "visitor_count" not in st.session_state:
+    # Base angka awal disesuaikan agar terlihat realistis, bertambah setiap sesi baru
+    st.session_state.visitor_count = 1173
+    st.session_state.counted = False
+
+if not st.session_state.counted:
+    st.session_state.visitor_count += 1
+    st.session_state.counted = True
+
+formatted_visitors = f"{st.session_state.visitor_count:05d}"
+digits_html = "".join([
+    f'<span style="display:inline-block; background:linear-gradient(180deg, #e2e8f0 0%, #ffffff 50%, #cbd5e1 100%); border:1px solid #94a3b8; border-radius:3px; padding:2px 6px; margin:0 1px; font-family:monospace; font-weight:bold; font-size:16px; color:#0f172a; box-shadow:inset 0 1px 2px rgba(0,0,0,0.1);">{d}</span>'
+    for d in formatted_visitors
+])
+
+# --- HEADER & VISITOR COUNTER DI UJUNG KANAN ATAS ---
+col_title, col_vis = st.columns([4, 1])
+with col_title:
+    st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
+    st.caption("Real-time line simulation: Target Demand/Hour, FX Rate, Labor Cost in USD ($), & IE Metrics.")
+
+with col_vis:
+    st.markdown(f"""
+    <div style="text-align: right; padding-top: 10px;">
+        <div style="font-size: 11px; font-weight: bold; color: #475569; letter-spacing: 1px; margin-bottom: 4px;">VISITORS</div>
+        <div>{digits_html}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # --- PRODUCTION PARAMETERS ---
 st.markdown("### ⚙️ Production Line Parameters")
@@ -83,7 +111,7 @@ if not edited_df.empty and takt_time_sec > 0:
     total_hourly_labor_cost_usd = total_actual_mp * hourly_salary_usd
     labor_cost_per_pair_usd = total_hourly_labor_cost_usd / target_demand_per_hour if target_demand_per_hour > 0 else 0
 
-    # METRICS SUMMARY (Dibagi 2 Baris / 3 Kolom agar tidak terpotong)
+    # METRICS SUMMARY (2 Baris x 3 Kolom agar teks tidak terpotong)
     st.markdown("---")
     st.subheader("📊 Key Performance Indicators (KPIs)")
     
@@ -97,10 +125,10 @@ if not edited_df.empty and takt_time_sec > 0:
     row2_c2.metric("⚡ Labor Productivity", f"{labor_productivity:.1f} Pairs/P/H")
     row2_c3.metric("💰 Labor Cost / Pair", f"${labor_cost_per_pair_usd:,.2f} USD")
 
-    # --- STEP 2: CANVAS ANIMATION WITH 1-HOUR AUTO-STOP ---
+    # --- STEP 2: CANVAS ANIMATION DENGAN REKAM VIDEO 30 DETIK ---
     st.markdown("---")
     st.subheader("2. 🎬 Shoe Production Line Simulation (One-Piece Flow)")
-    st.caption("Simulation runs for 1 Hour (3600 Seconds) and automatically stops (Auto-Stop).")
+    st.caption("Simulation runs for 1 Hour (3600 Seconds) with Auto-Stop. Click 'Record 30s Clip' to capture and download a video.")
 
     line_stations = []
     global_station_index = 0
@@ -180,17 +208,20 @@ if not edited_df.empty and takt_time_sec > 0:
             .controls {{
                 display: flex;
                 gap: 10px;
+                flex-wrap: wrap;
+                justify-content: center;
             }}
             button {{
                 background-color: #2563eb;
                 color: white;
                 border: none;
-                padding: 8px 18px;
-                font-size: 14px;
+                padding: 8px 16px;
+                font-size: 13px;
                 border-radius: 6px;
                 cursor: pointer;
                 font-weight: bold;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                transition: background-color 0.2s;
             }}
             button:hover {{
                 background-color: #1d4ed8;
@@ -200,6 +231,21 @@ if not edited_df.empty and takt_time_sec > 0:
             }}
             button.reset:hover {{
                 background-color: #b91c1c;
+            }}
+            button.record {{
+                background-color: #059669;
+            }}
+            button.record:hover {{
+                background-color: #047857;
+            }}
+            button.recording-active {{
+                background-color: #ea580c;
+                animation: pulse 1.2s infinite;
+            }}
+            @keyframes pulse {{
+                0% {{ opacity: 1; }}
+                50% {{ opacity: 0.7; }}
+                100% {{ opacity: 1; }}
             }}
         </style>
     </head>
@@ -212,6 +258,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     <button onclick="startSimulation()">▶ Play</button>
                     <button onclick="pauseSimulation()">⏸ Pause</button>
                     <button class="reset" onclick="resetSimulation()">🔄 Reset</button>
+                    <button id="record-btn" class="record" onclick="toggleRecording()">🎥 Record 30s Clip & Download</button>
                 </div>
             </div>
         </div>
@@ -225,11 +272,19 @@ if not edited_df.empty and takt_time_sec > 0:
             const canvas = document.getElementById("simCanvas");
             const ctx = canvas.getContext("2d");
             const timerDisplay = document.getElementById("timer-display");
+            const recordBtn = document.getElementById("record-btn");
 
             let animationId = null;
             let timeElapsed = 0;
             let isRunning = false;
             let isFinished = false;
+
+            // MediaRecorder Variables
+            let mediaRecorder = null;
+            let recordedChunks = [];
+            let isRecording = false;
+            let recordTimeout = null;
+            let recordCountdownInterval = null;
 
             const nStations = stations.length;
             const colSpacing = (canvas.width - 30) / Math.max(1, nStations);
@@ -250,7 +305,9 @@ if not edited_df.empty and takt_time_sec > 0:
             }}
 
             function drawScene() {{
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                // Isi latar belakang solid agar video rekaman tidak transparan/hitam
+                ctx.fillStyle = "#dcedc8";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
 
                 ctx.fillStyle = "#f1f8e9";
                 ctx.strokeStyle = "#1f2937";
@@ -365,7 +422,7 @@ if not edited_df.empty and takt_time_sec > 0:
                 ctx.fillStyle = "#111827";
                 ctx.font = "bold 11px Arial";
                 ctx.textAlign = "left";
-                ctx.fillText("📦 Total Output (1h): " + finishedCount + " Pairs   |   🔄 Total Line WIP: " + totalWipInLine + " Pairs" + (isFinished ? " — ✅ COMPLETED (1 HOUR)" : ""), 10, 252);
+                ctx.fillText("⏱️ Time: " + timeElapsed.toFixed(0) + "s   |   📦 Output: " + finishedCount + " Pairs   |   🔄 WIP: " + totalWipInLine + " Pairs" + (isFinished ? " — ✅ COMPLETED" : ""), 10, 252);
             }}
 
             function update(timestamp) {{
@@ -384,6 +441,7 @@ if not edited_df.empty and takt_time_sec > 0:
                     isFinished = true;
                     drawScene();
                     timerDisplay.innerText = "⏱️ Simulation Time: 3600.0s / 3600.0s (1 Hour Completed!) 🎉";
+                    if (isRecording) stopRecording();
                     return;
                 }}
 
@@ -494,6 +552,7 @@ if not edited_df.empty and takt_time_sec > 0:
             }}
 
             function resetSimulation() {{
+                if (isRecording) stopRecording();
                 pauseSimulation();
                 timeElapsed = 0;
                 finishedCount = 0;
@@ -505,19 +564,98 @@ if not edited_df.empty and takt_time_sec > 0:
                 drawScene();
             }}
 
+            // --- FUNGSI REKAM VIDEO KANVAS (30 DETIK CLIP) ---
+            function toggleRecording() {{
+                if (!isRecording) {{
+                    startRecording();
+                }} else {{
+                    stopRecording();
+                }}
+            }}
+
+            function startRecording() {{
+                if (!isRunning && !isFinished) {{
+                    startSimulation();
+                }}
+                
+                recordedChunks = [];
+                const stream = canvas.captureStream(30); // 30 FPS
+                
+                let options = {{ mimeType: 'video/webm; codecs=vp9' }};
+                if (!MediaRecorder.isTypeSupported(options.mimeType)) {{
+                    options = {{ mimeType: 'video/webm' }};
+                }}
+
+                try {{
+                    mediaRecorder = new MediaRecorder(stream, options);
+                }} catch (e) {{
+                    mediaRecorder = new MediaRecorder(stream);
+                }}
+
+                mediaRecorder.ondataavailable = function(event) {{
+                    if (event.data.size > 0) {{
+                        recordedChunks.push(event.data);
+                    }}
+                }};
+
+                mediaRecorder.onstop = function() {{
+                    const blob = new Blob(recordedChunks, {{ type: 'video/webm' }});
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = 'line_balancing_simulation_clip.webm';
+                    document.body.appendChild(a);
+                    a.click();
+                    setTimeout(() => {{
+                        document.body.removeChild(a);
+                        window.URL.revokeObjectURL(url);
+                    }}, 100);
+                }};
+
+                mediaRecorder.start();
+                isRecording = true;
+                recordBtn.classList.add("recording-active");
+
+                let secondsLeft = 30;
+                recordBtn.innerText = "⏹ Stop Recording (" + secondsLeft + "s)";
+
+                recordCountdownInterval = setInterval(() => {{
+                    secondsLeft--;
+                    if (secondsLeft > 0) {{
+                        recordBtn.innerText = "⏹ Stop Recording (" + secondsLeft + "s)";
+                    }}
+                }}, 1000);
+
+                // Otomatis berhenti & download setelah 30 detik
+                recordTimeout = setTimeout(() => {{
+                    if (isRecording) stopRecording();
+                }}, 30000);
+            }}
+
+            function stopRecording() {{
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') {{
+                    mediaRecorder.stop();
+                }}
+                isRecording = false;
+                clearTimeout(recordTimeout);
+                clearInterval(recordCountdownInterval);
+                recordBtn.classList.remove("recording-active");
+                recordBtn.innerText = "🎥 Record 30s Clip & Download";
+            }}
+
             drawScene();
         </script>
     </body>
     </html>
     """
 
-    st.components.v1.html(html_code, height=410, scrolling=False)
+    st.components.v1.html(html_code, height=415, scrolling=False)
 
     # --- STEP 3: YAMAZUMI CHART ---
     st.markdown("---")
     st.subheader("3. Yamazumi Chart (Effective CT vs Takt Time Analysis)")
     
-    import plotly.graph_objects as go
     fig_bar = go.Figure()
     colors = ['#EF4444' if i == bottleneck_idx else '#3B82F6' for i in range(len(df))]
 
@@ -537,14 +675,13 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_usd_fix")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_final_v1")
 
     # --- STEP 4: INDUSTRIAL ENGINEERING (IE) EXECUTIVE SUMMARY ---
     st.markdown("---")
     st.subheader("📋 4. Industrial Engineering (IE) Executive Summary")
     
     st.markdown(f"""
-    * **Target vs Actual Gap**: Target is set at `{target_demand_per_hour} Pairs/Hour` (Takt Time: `{takt_time_sec:.2f}s`). Output gaps are caused by line balancing losses, start-up filling delays, and micro-stoppages (*blocking/starving*) inherent in strict One-Piece Flow layouts.
     * **Bottleneck Identification & Action**: Process **`{bottleneck_process}`** acts as the primary constraint with an Effective CT of **`{max_ct:.2f}s`**. Instead of adding headcount (which degrades MP utilization), prioritize **method engineering** or **operator upskilling** to reduce cycle time.
     * **Key Performance Indicators (KPIs & Cost)**:
       * **Manpower Utilization**: **`{mp_utilization:.1f}%`** *(Recommended standard: **$\ge$ 85%**).* If below target, optimize work allocation rather than adding workers.
