@@ -6,31 +6,27 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
-# --- VISITOR COUNTER LOGIC (DYNAMIC INCREMENT ON SESSION LOAD) ---
-if "visitor_count" not in st.session_state:
-    st.session_state.visitor_count = 1174
-    st.session_state.visitor_count += 1
+# --- VISITOR COUNTER LOGIC (RELIABLE SESSION REFRESH INCREMENT) ---
+if "has_visited" not in st.session_state:
+    st.session_state.has_visited = True
+    if "visitor_count" not in st.session_state:
+        st.session_state.visitor_count = 1175
+    else:
+        st.session_state.visitor_count += 1
+else:
+    # Untuk memastikan bertambah saat halaman di-refresh penuh oleh browser
+    if "incremented_this_load" not in st.session_state:
+        if "visitor_count" not in st.session_state:
+            st.session_state.visitor_count = 1175
+        else:
+            st.session_state.visitor_count += 1
+        st.session_state.incremented_this_load = True
 
 formatted_visitors = f"{st.session_state.visitor_count:05d}"
 digits_html = "".join([
     f'<span style="display:inline-block; background:linear-gradient(180deg, #e2e8f0 0%, #ffffff 50%, #cbd5e1 100%); border:1px solid #94a3b8; border-radius:3px; padding:2px 6px; margin:0 1px; font-family:monospace; font-weight:bold; font-size:16px; color:#0f172a; box-shadow:inset 0 1px 2px rgba(0,0,0,0.1);">{d}</span>'
     for d in formatted_visitors
 ])
-
-# --- HEADER & VISITOR COUNTER DI UJUNG KANAN ATAS ---
-col_title, col_vis = st.columns([4, 1])
-with col_title:
-    st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
-    st.caption("Real-time line simulation: Target Demand/Hour, FX Rate, Labor Cost in USD ($), & IE Metrics.")
-
-with col_vis:
-    st.markdown(f"""
-    <div style="text-align: right; padding-top: 10px;">
-        <div style="font-size: 11px; font-weight: bold; color: #475569; letter-spacing: 1px; margin-bottom: 4px;">VISITORS</div>
-        <div>{digits_html}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
 # --- PRODUCTION PARAMETERS ---
 st.markdown("### ⚙️ Production Line Parameters")
 col_p1, col_p2, col_p3 = st.columns(3)
