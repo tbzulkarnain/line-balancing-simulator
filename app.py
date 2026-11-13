@@ -6,7 +6,7 @@ import math
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
 st.title("🏭 Production Line Balancing & WIP Bottleneck Simulator")
-st.caption("Simulasi lini riil: Target Pasang/Jam, Auto-Stop 1 Jam, Actual MP Otomatis, & Analisis IE.")
+st.caption("Simulasi lini riil: Target Pasang/Jam, Auto-Stop 1 Jam, Dual Balancing Rate (Pabrik & Yamazumi), & Produktivitas.")
 
 # --- KONTROL PARAMETER DI ATAS (TARGET PASANG/JAM) ---
 st.markdown("### ⚙️ Parameter Lini Produksi")
@@ -32,7 +32,6 @@ if "line_data" not in st.session_state:
 temp_df = st.session_state.line_data.copy()
 temp_df["Standard Time (s)"] = temp_df["Cycle Time Base (s)"] * (1 + temp_df["Allowance (%)"] / 100)
 
-# Auto MP dihitung ulang otomatis berdasarkan Takt Time terbaru
 temp_df["Auto MP"] = temp_df["Standard Time (s)"].apply(lambda st_val: max(1, math.ceil(st_val / takt_time_sec)) if takt_time_sec > 0 else 1)
 temp_df["Actual MP"] = temp_df["Auto MP"]
 
@@ -56,21 +55,32 @@ if not edited_df.empty and takt_time_sec > 0:
     df = edited_df.copy()
     df["Effective CT (s)"] = df["Standard Time (s)"] / df["Actual MP"]
     
+    # 1. Perhitungan MP Balancing Rate ala Pabrik (Total Teoretis MP / Total Actual MP)
+    df["Theoretical MP"] = df["Standard Time (s)"] / takt_time_sec
+    total_theo_mp = df["Theoretical MP"].sum()
+    total_actual_mp = df["Actual MP"].sum()
+    mp_balancing_rate = (total_theo_mp / total_actual_mp) * 100 if total_actual_mp > 0 else 0
+
+    # 2. Perhitungan Bottleneck & Line Efficiency Yamazumi (CT-based)
     max_ct = df["Effective CT (s)"].max()
     bottleneck_idx = df["Effective CT (s)"].idxmax()
     bottleneck_process = df.loc[bottleneck_idx, "Nama Proses"]
     
     total_effective_ct = df["Effective CT (s)"].sum()
     num_stations = len(df)
-    balancing_rate = (total_effective_ct / (max_ct * num_stations)) * 100
+    yamazumi_balancing_rate = (total_effective_ct / (max_ct * num_stations)) * 100
 
-    # METRICS SUMMARY
+    # 3. Produktivitas Tenaga Kerja (Labor Productivity)
+    labor_productivity = target_demand_per_hour / total_actual_mp if total_actual_mp > 0 else 0
+
+    # METRICS SUMMARY (5 Kolom Ringkasan)
     st.markdown("---")
-    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-    col_m1.metric("🎯 Balancing Rate", f"{balancing_rate:.2f}%")
-    col_m2.metric("🚨 Bottleneck", f"{bottleneck_process}", delta=f"{max_ct:.1f} s/pasang", delta_color="inverse")
-    col_m3.metric("👥 Total MP", f"{df['Actual MP'].sum()} Orang")
-    col_m4.metric("⏱️ Takt Time", f"{takt_time_sec:.1f} s")
+    col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
+    col_m1.metric("🎯 MP Balancing (Pabrik)", f"{mp_balancing_rate:.1f}%")
+    col_m2.metric("📊 Line Efficiency (CT)", f"{yamazumi_balancing_rate:.1f}%")
+    col_m3.metric("🚨 Bottleneck", f"{bottleneck_process}", delta=f"{max_ct:.1f} s/pasang", delta_color="inverse")
+    col_m4.metric("👥 Total MP", f"{total_actual_mp} Orang")
+    col_m5.metric("⚡ Produktivitas", f"{labor_productivity:.2f} Pas/Org/Jam")
 
     # --- STEP 2: ANIMASI KANVAS DENGAN AUTO-STOP 1 JAM (3600s) ---
     st.markdown("---")
@@ -512,14 +522,11 @@ if not edited_df.empty and takt_time_sec > 0:
     )
 
     fig_bar.update_layout(height=380, template="plotly_white")
-    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_autostop_hour")
+    st.plotly_chart(fig_bar, use_container_width=True, key="yamazumi_chart_dual_balancing")
 
     # --- STEP 4: ANALISIS TEKNIK INDUSTRI (IE) OTOMATIS ---
     st.markdown("---")
     st.subheader("📋 4. Analisis & Evaluasi Teknik Industri (Industrial Engineering)")
-    
-    total_mp_used = df['Actual MP'].sum()
-    labor_productivity = target_demand_per_hour / total_mp_used if total_mp_used > 0 else 0
     
     st.markdown(f"""
     Berdasarkan konfigurasi lini dan hasil simulasi berdurasi 1 jam, berikut adalah evaluasi performa lini produksi sepatu Anda:
@@ -532,8 +539,10 @@ if not edited_df.empty and takt_time_sec > 0:
        * Proses **`{bottleneck_process}`** bertindak sebagai pembatas utama laju produksi dengan *Effective Cycle Time* sebesar **`{max_ct:.2f} detik`**. 
        * *Rekomendasi IE*: Jika Anda ingin mendongkrak output mendekati target penuh, pertimbangkan untuk menambah operator (*Actual MP*) atau memperbaiki metode kerja (*method study*) khusus pada proses `{bottleneck_process}` ini.
     
-    3. **Indikator Ketenagakerjaan & Produktivitas**:
-       * **Total Manpower (MP)**: `{total_mp_used} Orang`
-       * **Produktivitas Tenaga Kerja**: `{labor_productivity:.2f} Pasang/Orang/Jam`
-       * **Tingkat Keseimbangan Lini (Balancing Rate)**: `{balancing_rate:.2f}%` (Semakin mendekati 100%, semakin merata beban kerja antar operator).
+    3. **Indikator Efisiensi & Produktivitas Tenaga Kerja**:
+       * **Total Manpower (MP Aktual)**: `{total_actual_mp} Orang`
+       * **Total MP Teoretis**: `{total_theo_mp:.2f} Orang`
+       * **MP Balancing Rate (Standar Pabrik)**: **`{mp_balancing_rate:.1f}%`** *(Dihitung dari Total Teoretis MP ÷ Total Actual MP. Semakin tinggi/mendekati 100%, semakin efisien alokasi tenaga kerja).*
+       * **Line Efficiency (Standar Yamazumi / CT)**: **`{yamazumi_balancing_rate:.1f}%`** *(Mengukur kesetimbangan waktu antar stasiun).*
+       * **Produktivitas Tenaga Kerja**: **`{labor_productivity:.2f} Pasang/Orang/Jam`** *(Rata-rata output yang dihasilkan tiap 1 orang pekerja dalam 1 jam).*
     """)
