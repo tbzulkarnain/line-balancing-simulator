@@ -7,55 +7,23 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
 
-# --- VISITOR COUNTER LOGIC (FILE-BASED PERSISTENT ACROSS REFRESHES) ---
-counter_file = "visitor_count.txt"
-
-if "visited_session" not in st.session_state:
-    st.session_state.visited_session = True
-    if os.path.exists(counter_file):
-        try:
-            with open(counter_file, "r") as f:
-                current_count = int(f.read().strip())
-        except:
-            current_count = 1175
-        current_count += 1
-    else:
-        current_count = 1176
-    
-    # Simpan kembali ke file
-    with open(counter_file, "w") as f:
-        f.write(str(current_count))
-    
-    st.session_state.visitor_count = current_count
-else:
-    if os.path.exists(counter_file):
-        try:
-            with open(counter_file, "r") as f:
-                st.session_state.visitor_count = int(f.read().strip())
-        except:
-            st.session_state.visitor_count = 1175
-    else:
-        st.session_state.visitor_count = 1175
-
-formatted_visitors = f"{st.session_state.visitor_count:05d}"
-digits_html = "".join([
-    f'<span style="display:inline-block; background:linear-gradient(180deg, #e2e8f0 0%, #ffffff 50%, #cbd5e1 100%); border:1px solid #94a3b8; border-radius:3px; padding:2px 6px; margin:0 1px; font-family:monospace; font-weight:bold; font-size:16px; color:#0f172a; box-shadow:inset 0 1px 2px rgba(0,0,0,0.1);">{d}</span>'
-    for d in formatted_visitors
-])
-
 # --- HEADER & VISITOR COUNTER DI UJUNG KANAN ATAS ---
 col_title, col_vis = st.columns([4, 1])
+
 with col_title:
     st.title("🏭 Production Line Balancing Simulator")
     st.caption("Real-time line simulation: Target Demand/Hour, FX Rate, Labor Cost in USD ($), & IE Metrics.")
 
 with col_vis:
-    st.markdown(f"""
-    <div style="text-align: right; padding-top: 10px;">
-        <div style="font-size: 11px; font-weight: bold; color: #475569; letter-spacing: 1px; margin-bottom: 4px;">VISITORS</div>
-        <div>{digits_html}</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style="text-align: right; padding-top: 15px;">
+            <span style="font-size: 11px; font-weight: bold; color: #555; display: block; margin-bottom: 2px;">VISITORS</span>
+            <img src="https://hitwebcounter.com/counter/counter.php?page=GANTI_DENGAN_PAGE_ID_BARU&style=0006&nbdigits=5&type=page&initCount=1175" title="Counter Widget" alt="Visit counter For Websites" border="0" />
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # --- PRODUCTION PARAMETERS ---
 st.markdown("### ⚙️ Production Line Parameters")
