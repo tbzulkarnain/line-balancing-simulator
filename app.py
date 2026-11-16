@@ -1,41 +1,10 @@
-import streamlit as st
-import pandas as pd
 import json
 import math
-import requests
+import pandas as pd
 import plotly.graph_objects as go
+import streamlit as st
 
 st.set_page_config(page_title="Line Balancing Simulator", layout="wide")
-
-# --- VISITOR COUNTER LOGIC (EXTERNAL API + STYLED DIGITS) ---
-INITIAL_COUNT = 1175
-NAMESPACE = "line_balancing_sim_ie"
-KEY = "visitors"
-
-@st.cache_resource
-def get_global_visitor_count() -> int:
-    try:
-        resp = requests.get(
-            f"https://api.countapi.xyz/hit/{NAMESPACE}/{KEY}",
-            timeout=3,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            if "value" in data:
-                return int(data["value"]) + INITIAL_COUNT
-    except Exception:
-        pass
-    return INITIAL_COUNT
-
-if "counted_session" not in st.session_state:
-    st.session_state.counted_session = True
-    st.session_state.visitor_count = get_global_visitor_count()
-
-formatted_visitors = f"{st.session_state.visitor_count:05d}"
-digits_html = "".join([
-    f'<span style="display:inline-block; background:linear-gradient(180deg, #e2e8f0 0%, #ffffff 50%, #cbd5e1 100%); border:1px solid #94a3b8; border-radius:3px; padding:2px 6px; margin:0 1px; font-family:monospace; font-weight:bold; font-size:16px; color:#0f172a; box-shadow:inset 0 1px 2px rgba(0,0,0,0.1);">{d}</span>'
-    for d in formatted_visitors
-])
 
 # --- HEADER & VISITOR COUNTER DI UJUNG KANAN ATAS ---
 col_title, col_vis = st.columns([4, 1])
@@ -46,14 +15,18 @@ with col_title:
 
 with col_vis:
     st.markdown(
-        f"""
-        <div style="text-align: right; padding-top: 10px;">
-            <div style="font-size: 11px; font-weight: bold; color: #475569; letter-spacing: 1px; margin-bottom: 4px;">VISITORS</div>
-            <div>{digits_html}</div>
+        """
+        <div style="text-align: right; padding-top: 15px;">
+            <span style="font-size: 11px; font-weight: bold; color: #555; display: block; margin-bottom: 2px;">VISITORS</span>
+            <a href="https://www.hitwebcounter.com" target="_blank">
+                <img src="https://hitwebcounter.com/counter/counter.php?page=19782811&style=0006&nbdigits=5&type=page&initCount=0" title="Counter Widget" alt="Visit counter For Websites" border="0" />
+            </a>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+st.markdown("---")
 
 # --- PRODUCTION PARAMETERS ---
 st.markdown("### ⚙️ Production Line Parameters")
