@@ -19,7 +19,7 @@ with col_vis:
         """
         <div style="text-align: right; padding-top: 15px;">
             <span style="font-size: 11px; font-weight: bold; color: #555; display: block; margin-bottom: 2px;">VISITORS</span>
-            <img src="https://hitwebcounter.com/counter/counter.php?page=GANTI_DENGAN_PAGE_ID_BARU&style=0006&nbdigits=5&type=page&initCount=1175" title="Counter Widget" alt="Visit counter For Websites" border="0" />
+            <img src="TEMPEL_URL_IMG_DARI_HITWEBCOUNTER_DI_SINI" title="Counter Widget" alt="Visit counter For Websites" border="0" />
         </div>
         """,
         unsafe_allow_html=True,
